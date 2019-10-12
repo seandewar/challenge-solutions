@@ -6,9 +6,9 @@
 class Solution {
     void fillIsland(vector<vector<char>>& grid, int x, int y)
     {
-        if (x < 0 || x >= size(grid[0]) ||
-            y < 0 || y >= size(grid) ||
-            grid[y][x] == '0') {
+        if (x < 0 || x >= size(grid[0])
+            || y < 0 || y >= size(grid)
+            || grid[y][x] == '0') {
             return;
         }
 
