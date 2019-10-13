@@ -31,9 +31,8 @@ public:
         for (auto it = cbegin(intervals) + 1; it != cend(intervals); ++it) {
             const pair interval((*it)[0], (*it)[1]);
 
-            // because of sorted inputs, we only need to check if the end of
-            // the merging interval intersects with the beginning of this one
-            // to merge
+            // because of sorted inputs, we only check if the end of the
+            // merging interval intersects with the beginning of this one
             if (merge.second >= interval.first) {
                 merge.second = max(merge.second, interval.second);
             }
