@@ -19,7 +19,7 @@ public:
 
         // sorting the intervals makes merging easier in one pass
         sort(begin(intervals), end(intervals),
-             [](const vector<int>& a, const vector<int>& b) noexcept {
+             [](const auto& a, const auto& b) noexcept {
                  // no need to sort ends if starts are equal, as they will be
                  // merged anyway, so just consider the starts for sorting
                  return a[0] < b[0];
