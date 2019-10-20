@@ -7,7 +7,7 @@
 // this works nicely if the range starts at the beginning of nums (this is why
 // indexing accumSums_ is offset by 1).
 //
-// Complexity: lookup runtime O(1), construction runtime O(n), space O(n).
+// Complexity: lookup runtime O(1), pre-processing runtime O(n), space O(n).
 
 class NumArray {
     vector<int> accumSums_;
