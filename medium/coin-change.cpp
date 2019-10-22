@@ -14,10 +14,9 @@ public:
 
             for (const int coin : coins) {
                 if (coin <= a) {
-                    const int cached = fewestCache[a - coin];
-
                     // ensure it was possible to make the exact amount from this
                     // current coin total
+                    const int cached = fewestCache[a - coin];
                     if (cached != -1) {
                         minCoins = minCoins != -1 ? min(cached + 1, minCoins)
                                                   : cached + 1;
@@ -40,26 +39,22 @@ class Solution {
     int fewestCoins(const vector<int>& coins, int target,
                     vector<int>& fewestCache)
     {
-        if (target == 0) {
+        if (target == 0)
             return 0;
-        }
-        if (target < 0) {
+        if (target < 0)
             return -1;
-        }
 
         const int cacheIdx = target - 1;
 
         // we've already calculated the fewest to make this target, or we've
         // already determined it's impossible. return that value instead
-        if (fewestCache[cacheIdx] != 0) {
+        if (fewestCache[cacheIdx] != 0)
             return fewestCache[cacheIdx];
-        }
 
         int minCoins = -1;
 
         for (const int coin : coins) {
             const int result = fewestCoins(coins, target - coin, fewestCache);
-
             if (result >= 0) {
                 minCoins = minCoins >= 0 ? min(minCoins, result + 1)
                                          : result + 1;

@@ -14,12 +14,10 @@ public:
         int maxProfit = 0, lowBuy = numeric_limits<int>::max();
 
         for (const int price : prices) {
-            if (price < lowBuy) {
+            if (price < lowBuy)
                 lowBuy = price;
-            }
-            else {
+            else
                 maxProfit = max(maxProfit, price - lowBuy);
-            }
         }
 
         return maxProfit;

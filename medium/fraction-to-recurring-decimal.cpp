@@ -10,19 +10,15 @@ class Solution {
 public:
     string fractionToDecimal(long long n, long long d)
     {
-        if (n == 0) {
+        if (n == 0)
             return "0"; // just zero
-        }
-
-        if (d == 0) {
+        if (d == 0)
             return "undefined"; // division by zero
-        }
 
         ostringstream resultss;
 
-        if ((n < 0) ^ (d < 0)) {
+        if ((n < 0) ^ (d < 0))
             resultss << '-'; // write negative sign if needed
-        }
 
         // remove signs so they don't affect our calc - they're unneeded
         n = abs(n);
@@ -37,21 +33,19 @@ public:
 
             // divide until there is no remainder left
             for (auto rem = n % d; rem != 0; rem %= d) {
-                const auto it = remmap.find(rem);
-
-                if (it != cend(remmap)) {
+                if (const auto fit = remmap.find(rem); fit != cend(remmap)) {
                     // already divided this remainder - digits will repeat!
-                    digitchars.insert(cbegin(digitchars) + it->second, '(');
+                    digitchars.insert(cbegin(digitchars) + fit->second, '(');
                     digitchars.push_back(')');
                     break;
                 }
 
                 // map the remainder to the index of this digit so we know
                 // where to start inserting brackets around repeating digits.
-                remmap[rem] = size(digitchars);
+                remmap.emplace(rem, size(digitchars));
 
                 rem *= 10;
-                digitchars.push_back(to_string(rem / d)[0]);
+                digitchars.push_back(to_string(rem / d).front());
             }
 
             resultss << '.' << string(cbegin(digitchars), cend(digitchars));
