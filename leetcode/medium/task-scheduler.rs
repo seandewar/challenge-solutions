@@ -5,7 +5,7 @@
 
 impl Solution {
     pub fn least_interval(tasks: Vec<char>, n: i32) -> i32 {
-        let mut task_counts = [0 as usize; 26];
+        let mut task_counts = [0usize; 26];
         for t in tasks {
             task_counts[t as usize - 'A' as usize] += 1;
         }
@@ -13,10 +13,10 @@ impl Solution {
         let compare_desc = |a: &usize, b: &usize| b.cmp(a);
         task_counts.sort_unstable_by(compare_desc);
 
-        let mut result: i32 = 0;
+        let mut result = 0;
 
         while task_counts[0] > 0 {
-            let mut i: usize = 0;
+            let mut i = 0usize;
 
             while i < task_counts.len() && task_counts[i] > 0 {
                 if i > n as usize {
