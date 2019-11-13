@@ -3,6 +3,7 @@
 // Uses Floyd's cycle-finding (Floyd's Tortoise & Hare) algorithm, as explained
 // in the suggested solutions for this leetcode problem. This is the exact same
 // solution for the "Linked List Cycle II" leetcode problem, just repurposed.
+// (see my solution for that for in-depth explanation of the algorithm)
 //
 // If we interpret the listed numbers as indices to the next number in the
 // list, this can be reduced to a cycle detection problem, as a repeated index
@@ -34,8 +35,9 @@ public:
             iSlow = nums[iSlow];
         } while (iFast != iSlow);
 
-        // find where the cycle begins (can reuse the same variables).
-        iFast = 0;
+        // find where the cycle begins. see my "Linked List Cycle II" solution
+        // for an explanation of how this works
+        iFast = 0; // reuse as a 2nd slow index starting from the "list" head
         while (iFast != iSlow) {
             iFast = nums[iFast];
             iSlow = nums[iSlow];
