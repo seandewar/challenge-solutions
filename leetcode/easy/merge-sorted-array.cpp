@@ -10,6 +10,10 @@ class Solution {
 public:
     void merge(vector<int>& nums1, int m, vector<int>& nums2, int n)
     {
+        // because inputs are sorted, if all of num2 has been merged into num1
+        // (n==0), the rest of num1 that we haven't seen will already be sorted
+        // and in the correct place at the beginning of the merged num1 array
+
         while (n > 0) {
             // may be tempting to write this as a single ternary expression:
             //
