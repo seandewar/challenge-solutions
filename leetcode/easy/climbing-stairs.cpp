@@ -4,6 +4,14 @@
 // generating the fibonnaci sequence, and the numbers generated are the same
 // starting from the 2nd fibonnaci number (1, 2, 3, 5, 8...).
 //
+// The tie(curr, prev) line may be replaced with:
+//
+// prev = curr + prev;
+// swap(prev, curr);
+//
+// Good compilers will presumably generate the same code with optimizations on
+// as above, creating only 1 temporary at most.
+//
 // Complexity: runtime O(n), space O(1).
 
 class Solution {
@@ -16,10 +24,8 @@ public:
         int curr = 2;
         int prev = 1;
 
-        for (int i = 2; i < n; ++i) {
-            prev = curr + prev;
-            swap(prev, curr);
-        }
+        for (int i = 2; i < n; ++i)
+            tie(curr, prev) = make_tuple(curr + prev, curr);
 
         return curr;
     }
