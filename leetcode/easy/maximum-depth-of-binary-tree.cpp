@@ -1,6 +1,7 @@
 // https://leetcode.com/problems/maximum-depth-of-binary-tree/
 //
-// Complexity: runtime O(n), space O(logn) [recursion overhead].
+// Complexity: runtime O(n), space O(logn) if BST balanced, O(n) otherwise
+// [recursion overhead].
 
 /**
  * Definition for a binary tree node.
