@@ -53,13 +53,13 @@ class Solution {
                 continue;
 
             if (!left.isPresent() || !right.isPresent()
-                || left.get().val != right.get().val)
+                || left.orElseThrow().val != right.orElseThrow().val)
                 return false;
 
-            stack.add(Optional.ofNullable(left.get().left));
-            stack.add(Optional.ofNullable(right.get().right));
-            stack.add(Optional.ofNullable(left.get().right));
-            stack.add(Optional.ofNullable(right.get().left));
+            stack.add(Optional.ofNullable(left.orElseThrow().left));
+            stack.add(Optional.ofNullable(right.orElseThrow().right));
+            stack.add(Optional.ofNullable(left.orElseThrow().right));
+            stack.add(Optional.ofNullable(right.orElseThrow().left));
         }
 
         return true;
