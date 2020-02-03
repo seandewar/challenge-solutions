@@ -26,6 +26,14 @@ class Solution {
         int result = 0;
 
         for (int i = 0; i < s.length(); ++i) {
+            // to avoid the i < s.length() - 1 check every iteration, you can
+            // instead initialize result as:
+            //
+            // int result = s.length() > 0
+            //     ? ROMAN_MAP.get(s.charAt(s.length() - 1))
+            //     : 0;
+            //
+            // and iterate until i < s.length() - 1.
             final var value = ROMAN_MAP.get(s.charAt(i));
             final var nextValue = i < s.length() - 1
                 ? ROMAN_MAP.get(s.charAt(i + 1))
