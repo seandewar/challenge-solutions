@@ -30,8 +30,8 @@ public:
     }
 };
 
-// Cheesy solution using string manipulation. Costs extra space due to string
-// allocation.
+// Alternative Solution: Cheesy solution using string manipulation. Costs extra
+// space due to string allocation.
 // Complexity: runtime is presumably O(log(x)), space O(log(x)).
 /*
 class Solution {

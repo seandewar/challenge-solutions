@@ -3,9 +3,9 @@
 // Linear time solution (~2.5 list traversals) with no extra space.
 //
 // This solution mutates the list. You may want to consider undoing
-// modifications to the list once the result is calculated, if you care.
+// modifications to the list once the result is calculated, if you care enough.
 //
-// See the alternative solution for more obvious and less lengthy O(n) extra
+// See the alternative solution for a more obvious and less lengthy O(n) extra
 // space solution.
 //
 // Complexity: runtime O(n), space O(1).
