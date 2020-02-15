@@ -22,7 +22,7 @@
 // waste a lot of time committing to longer candidate paths first, only to find
 // shorter ones later via edge relaxations).
 //
-// Complexity: runtime O(n^n + m*logm), space O(n+m) [where n==number of nodes,
+// Complexity: runtime O(m^n + m*logm), space O(n+m) [where n==number of nodes,
 // m==number of edges (size(times))].
 
 class Solution {
@@ -76,7 +76,8 @@ public:
             return -1; // failed to find a path through all nodes
 
         // the path of largest total weight (elapsed time) will be the shortest
-        // path that visits every node
+        // path that visits every node. UB if empty(times) and N==0, but we
+        // never check for this as the test inputs guarantee at least 1 node
         return max_element(cbegin(minTimesMap), cend(minTimesMap),
                            [](const auto& a, const auto& b) {
                                return a.second < b.second;
@@ -84,8 +85,9 @@ public:
     }
 };
 
-// Alternative Solution: Bellman-Ford algorithm (modified breadth-first search
-// with edge relaxations).
+// Alternative Solution: Shortest Path Faster Algorithm (SPFA) (modified
+// Bellman-Ford with a queue AKA modified breadth-first search with edge
+// relaxations).
 //
 // Unlike DFS, which continuously visits a chain/branch of edges as far as
 // possible before backtracking, BFS uses a queue to visit all the outgoing
@@ -101,8 +103,8 @@ public:
 // afterwards (instead of committing to all the outgoing paths of the initial
 // choice first before backtracking), which includes the minimum weight edge.
 //
-// Complexity: runtime O(n^2 + m), space O(n+m) [where n==number of nodes,
-// m==number of edges (size(times))].
+// Complexity: runtime O(m*n), space O(n+m) [minTimesMap/queue/qset + timesMap].
+// [where n==number of nodes, m==number of edges (size(times))]
 /*
 class Solution {
 public:
@@ -114,24 +116,38 @@ public:
         for (const auto& x : times)
             timesMap[x[0]].emplace_back(x[1], x[2]);
 
-        // NOTE: deduction fails for "queue q(vector{pair(K, 0)})" when using
-        // GCC (bugzilla 89062)
-        unordered_map<int, int> minTimesMap;
-        queue<pair<int, int>> q({{K, 0}});
+        unordered_map<int, int> minTimesMap = {{K, 0}};
+
+        queue<int> q({K});
+        unordered_set qset = {K}; // O(1) lookup for what nodes are in the queue
 
         while (!empty(q)) {
-            const auto [root, elapsedTime] = q.front();
+            const int root = q.front();
+            qset.erase(root);
             q.pop();
 
-            if (const auto fIt = minTimesMap.find(root);
-                fIt != cend(minTimesMap) && fIt->second <= elapsedTime)
-                continue;
+            if (const auto fIt = timesMap.find(root);
+                fIt != cend(timesMap)) {
+                const int minTime = minTimesMap[root];
 
-            minTimesMap[root] = elapsedTime;
+                for (const auto& x : fIt->second) {
+                    const auto [next, time] = x;
 
-            if (const auto fIt = timesMap.find(root); fIt != cend(timesMap)) {
-                for (const auto x : fIt->second)
-                    q.emplace(x.first, elapsedTime + x.second);
+                    // check if we just found a shorter path to this node. if
+                    // so, perform edge relaxation
+                    if (const auto fIt = minTimesMap.find(next);
+                        fIt == cend(minTimesMap)
+                        || minTime + time < fIt->second) {
+                        minTimesMap[next] = minTime + time;
+
+                        // don't queue if this node is already in the queue
+                        if (qset.count(next) > 0)
+                            continue;
+
+                        q.push(next);
+                        qset.insert(next);
+                    }
+                }
             }
         }
 
@@ -146,16 +162,27 @@ public:
 };
 */
 
-// Alternative Solution: Dijkstra's algorithm (Bellman-Ford + priority queue).
+// Alternative Solution: Dijkstra's algorithm (similar to Bellman-Ford + a
+// priority queue).
 //
-// Same as the above BFS + edge relaxation algorithm, except we use a priority
-// queue (heap) instead of a regular FIFO queue. This heap is used to continue
-// our search via the shortest total weight candidate path that we have found
-// so far, meaning that if we have already visited a node, we did so via the
-// shortest possible path from K.
+// Somewhat similar to the above SPF algorithm, except we use a min priority
+// queue (min heap) instead of a regular FIFO queue. This heap is used to
+// greedily continue our search via the shortest total weight candidate path
+// that we have found so far, meaning that if we have already visited a node,
+// we did so via the shortest possible path from K.
 //
-// Complexity: runtime O(mlogm), space O(n+m) [where n==number of nodes,
-// m==number of edges (size(times))].
+// NOTE: As std::priority_queue does not support decrease-key operations (we
+// can't edit any key in the heap to be a lesser value in at most logarithmic
+// time), and because we can't see if a key already exists in the heap without
+// implementing some lookup structure, multiple candidate path lengths to the
+// same node may be stored within the heap instead of only the shortest
+// available. If decrease-key is supported, the worst-case runtime can be
+// reduced to O(nlogn + m) with some modifications, as each node will have only
+// its shortest candidate path to it within the heap, instead of a candidate
+// path for each ingoing edge to that node (O(n) vs O(m) entries).
+//
+// Complexity: runtime O(mlogm), space O(n+m) [minTimesMap + timesMap/heap].
+// [where n==number of nodes, m==number of edges (size(times))]
 /*
 class Solution {
 public:
