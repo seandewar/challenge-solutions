@@ -1,6 +1,7 @@
 # Sean's Challenge Solutions Repository
 _My personal repository for solutions to [LeetCode](https://leetcode.com/) (&
-previously, some [HackerRank](https://www.hackerrank.com/)) problems._
+some (old) [HackerRank](https://www.hackerrank.com/) and
+[InterviewBit](https://www.interviewbit.com/)) problems._
 
 I try to annotate every solution with a link to their respective questions,
 comments regarding their time & space complexities and other notes, while also
