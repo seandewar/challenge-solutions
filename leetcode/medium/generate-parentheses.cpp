@@ -17,9 +17,8 @@ class Solution {
         }
 
         generate(out, combination += '(', numRemaining - 1, numUnclosed + 1);
-        combination.pop_back(); // backtrack the '('
-
-        generate(out, combination += ')', numRemaining, numUnclosed - 1);
+        combination.back() = ')'; // backtrack the '(', replace with ')'
+        generate(out, combination, numRemaining, numUnclosed - 1);
         combination.pop_back(); // backtrack the ')' for our caller
     }
 
