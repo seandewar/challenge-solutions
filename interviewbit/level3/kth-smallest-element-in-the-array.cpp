@@ -29,8 +29,9 @@ int Solution::kthsmallest(const vector<int>& A, const int K)
     if (A.empty()) // unreachable due to test inputs, but felt like including it
         throw invalid_argument("A cannot be empty");
 
-    int min = *min_element(A.cbegin(), A.cend());
-    int max = *max_element(A.cbegin(), A.cend());
+    // interviewbit uses C++11, so we can't use C++17 structured bindings :(
+    const auto minMaxIt = minmax_element(A.cbegin(), A.cend());
+    int min = *minMaxIt.first, max = *minMaxIt.second;
 
     while (min <= max) {
         const int middle = min + (max - min) / 2;
