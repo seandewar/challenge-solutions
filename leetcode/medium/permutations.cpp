@@ -53,6 +53,26 @@ public:
     }
 };
 
+// Alternative Solution: using std::next_permutation().
+// Complexity: runtime O(n!), space is likely O(1) [input/output not
+// considered].
+/*
+class Solution {
+public:
+    vector<vector<int>> permute(vector<int>& nums) const
+    {
+        vector<vector<int>> results;
+        sort(begin(nums), end(nums)); // requires sorted nums beforehand
+
+        do {
+            results.push_back(nums);
+        } while (next_permutation(begin(nums), end(nums)));
+
+        return results;
+    }
+};
+*/
+
 // Alternative Solution: back-tracking, but no hash set or auxillary vectors for
 // permutation building.
 //
