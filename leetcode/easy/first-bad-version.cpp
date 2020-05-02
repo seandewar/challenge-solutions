@@ -10,11 +10,11 @@ bool isBadVersion(int version);
 
 class Solution {
 public:
-    int firstBadVersion(int n)
+    int firstBadVersion(const int n)
     {
         int left{1}, right{n};
 
-        while (left < right) {
+        while (left < right) { // left != right also works
             // avoids overflow compared to (left + right) / 2
             const int middle{left + (right - left) / 2};
 
@@ -24,7 +24,7 @@ public:
                 left = middle + 1; // may safely adjust our search space by +1
         }
 
-        // left will be the first bad version at this point. the input
+        // left & right will be the first bad version at this point. the input
         // guarantees there to be at least 1 bad version in the search space
         return left;
     }
