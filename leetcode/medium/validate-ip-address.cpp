@@ -3,8 +3,8 @@
 // Fully-regex solution.
 //
 // You could split the regex up into the match required for one IPvX number,
-// constructing the full regex at runtime or statically instead, but it's easier
-// to use the magic of vim instead. :)
+// constructing the full regex at runtime or statically instead (see alternative
+// solution), but it's easier to use the magic of vim instead. :)
 //
 // Complexity: runtime Omega(n) [n == size(ip)].
 
@@ -31,6 +31,31 @@ public:
             return "IPv6";
 
         return "Neither";
+    }
+};
+
+// Alternative Solution: Chunked version of the above solution.
+//
+// The regex string is reconstructed statically via use of the pre-processor.
+// With C++20, you can use constexpr strings instead.
+//
+// Nested ternary is included for fun.
+//
+// Complexity: runtime Omega(n) [n == size(ip)].
+
+#define V4_CHUNK "((?:[1-9]?\\d)|(?:1\\d\\d)|(?:2[0-4]\\d)|(?:25[0-5]))"
+#define V6_CHUNK "([\\da-fA-F]{1,4})"
+
+class Solution {
+public:
+    string validIPAddress(const string& ip) const
+    {
+        const regex v4(V4_CHUNK "\." V4_CHUNK "\." V4_CHUNK "\." V4_CHUNK);
+        const regex v6(V6_CHUNK ":" V6_CHUNK ":" V6_CHUNK ":" V6_CHUNK ":"
+                       V6_CHUNK ":" V6_CHUNK ":" V6_CHUNK ":" V6_CHUNK);
+
+        return regex_match(ip, v4) ? "IPv4"
+                                   : (regex_match(ip, v6) ? "IPv6" : "Neither");
     }
 };
 
