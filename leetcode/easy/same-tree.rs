@@ -21,8 +21,8 @@
 //   }
 // }
 
-use std::rc::Rc;
 use std::cell::RefCell;
+use std::rc::Rc;
 
 // blame leetcode for the terribly overcomplicated type; wtf?!
 type NodeRefOption = Option<Rc<RefCell<TreeNode>>>;
