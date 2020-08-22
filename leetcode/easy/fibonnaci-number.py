@@ -2,7 +2,7 @@
 #
 # Uses Python 3.6. For Python 3.8 and above, you can replace reduce() by using
 # assignment expressions (:= operator).
-
+#
 # Complexity: runtime O(n), space O(1).
 
 from functools import reduce
