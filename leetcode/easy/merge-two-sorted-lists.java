@@ -1,6 +1,8 @@
 // https://leetcode.com/problems/merge-two-sorted-lists/
 //
 // Iterative solution.
+// See the C++ version of this solution for a "cooler" alternative.
+//
 // Complexity: runtime O(m+n), space O(1).
 
 /**
