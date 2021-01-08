@@ -6,21 +6,18 @@ class Solution {
 public:
     int lengthOfLongestSubstring(const string& s) const
     {
-        unordered_set<char> seen;
-        int result = 0;
+        size_t left = 0, right = 0, maxLen = 0;
+        unordered_set<char> substrSet; // could use an array instead
 
-        for (auto left = cbegin(s), right = cbegin(s);
-             right != cend(s);
-             ++right) {
-            if (!seen.insert(*right).second) {
-                while (*left != *right)
-                    seen.erase(*(left++));
-                ++left;
+        while (right < size(s)) {
+            if (substrSet.insert(s[right]).second) {
+                maxLen = max(maxLen, size(substrSet));
+                ++right;
+            } else { // unsuccessful insertion; char already in the set
+                substrSet.erase(s[left++]);
             }
-
-            result = max<int>(result, size(seen));
         }
 
-        return result;
+        return maxLen;
     }
 };
