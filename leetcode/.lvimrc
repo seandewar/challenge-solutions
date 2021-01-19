@@ -1,0 +1,45 @@
+if !g:localvimrc_sourced_once
+    " Add comment markers and trims trailing whitespace for a list of lines
+    function! s:CommentifyLines(lines) abort
+        if !empty(&commentstring)
+            call map(a:lines, {_, v -> printf(&commentstring, ' ' . v . ' ')})
+        endif
+        call map(a:lines, {_, v -> substitute(v, '^\(.\{-}\)\s*$', '\1', '')})
+        return a:lines
+    endfunction
+
+    " Inserts main solution header at beginning of file
+    function! s:AddLcMainHeader() abort
+        let bname_no_ext = expand('%:t:r')
+        let lines = ['https://leetcode.com/problems/'
+                    \ . (empty(bname_no_ext) ? 'TODO' : bname_no_ext),
+                    \ '',
+                    \ 'Complexity: runtime O(TODO), space O(TODO).']
+        let lines = s:CommentifyLines(lines) + ['']
+        call append(0, lines)
+    endfunction
+
+    " Inserts alternative solution header above cursor line
+    function! s:AddLcAltHeader() abort
+        let lines = ['Alternative Solution: TODO.',
+                    \ '',
+                    \ 'Complexity: runtime O(TODO), space O(TODO).']
+        let lines = s:CommentifyLines(lines) + ['', '']
+        call append(line('.'), lines)
+        " move past end of inserted header
+        execute 'normal ' . len(lines) . 'j'
+    endfunction
+endif
+
+if g:localvimrc_sourced_once_for_file
+    finish
+endif
+
+if line('$') == 1 && empty(getline(1))
+    call s:AddLcMainHeader()
+endif
+
+command! -bar -buffer LCMainHeader call s:AddLcMainHeader()
+command! -bar -buffer LCAltHeader call s:AddLcAltHeader()
+
+echo "Use :LCAltHeader to add a header for an alternative solution."
