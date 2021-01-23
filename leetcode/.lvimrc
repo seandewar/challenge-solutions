@@ -41,5 +41,6 @@ endif
 
 command! -bar -buffer LCMainHeader call s:AddLcMainHeader()
 command! -bar -buffer LCAltHeader call s:AddLcAltHeader()
-
 echo "Use :LCAltHeader to add a header for an alternative solution."
+
+setlocal spell
