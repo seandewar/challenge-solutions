@@ -22,7 +22,6 @@ if !g:localvimrc_sourced_once
     " Inserts alternative solution header above cursor line
     function! s:AddLcAltHeader() abort
         let lines = ['Alternative Solution: TODO.',
-                    \ '',
                     \ 'Complexity: runtime O(TODO), space O(TODO).']
         let lines = s:CommentifyLines(lines) + ['', '']
         call append(line('.'), lines)
