@@ -40,6 +40,7 @@ endif
 
 command! -bar -buffer LCMainHeader call s:AddLcMainHeader()
 command! -bar -buffer LCAltHeader call s:AddLcAltHeader()
+redraw " force a redraw now so the message has a chance to show
 echo "Use :LCAltHeader to add a header for an alternative solution."
 
 setlocal spell
