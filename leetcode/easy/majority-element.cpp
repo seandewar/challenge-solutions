@@ -14,7 +14,8 @@
 // arbitrary value, however, the test inputs are always guaranteed to contain a
 // majority element for this problem.
 //
-// Complexity: runtime O(n) [O(n*logn) or higher worst case], space O(1).
+// Complexity: runtime O(n) [O(n*logn) or higher worst case], likely space O(1)
+// or O(logn), depending on nth_element() implementation.
 
 class Solution {
 public:
@@ -103,7 +104,8 @@ public:
 // Alternative Solution: In-place sort and iterate through the sorted array,
 // finding the value that has duplicates of length size(nums)/2+1.
 //
-// Complexity: runtime O(n*logn), space O(1).
+// Complexity: runtime O(n*logn), likely space O(1) or O(logn), depending on
+// sort() implementation.
 /*
 class Solution {
 public:
@@ -126,7 +128,8 @@ public:
 // Alternative Solution: In-place sort and std::find_if_not() (variation of the
 // above alternative solution).
 //
-// Complexity: runtime O(n*logn), space O(1).
+// Complexity: runtime O(n*logn), likely space O(1) or O(logn), depending on
+// sort().
 /*
 class Solution {
 public:

@@ -1,6 +1,7 @@
 // https://leetcode.com/problems/non-overlapping-intervals
 //
-// Complexity: runtime O(n*logn), space O(1).
+// Complexity: runtime O(n*logn), likely space O(1) or O(logn), depending on
+// sort().
 
 class Solution {
 public:

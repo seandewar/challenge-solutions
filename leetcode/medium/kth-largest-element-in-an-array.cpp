@@ -8,7 +8,8 @@
 // will be <= the new nth-element (however, that doesn't mean those elements
 // will be completely sorted).
 //
-// Complexity: runtime O(n) [O(n*logn) or higher worst case], space O(1).
+// Complexity: runtime O(n) [O(n*logn) or higher worst case], likely space O(1)
+// or O(logn), depending on nth_element() impl.
 
 class Solution {
 public:
@@ -21,7 +22,7 @@ public:
 };
 
 // Alternative Solution: In-place sorting using std::sort().
-// Complexity: runtime O(n*logn), space O(1).
+// Complexity: runtime O(n*logn), likely space O(1) or O(logn).
 /*
 class Solution {
 public:

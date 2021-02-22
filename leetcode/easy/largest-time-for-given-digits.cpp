@@ -1,6 +1,7 @@
 // https://leetcode.com/problems/largest-time-for-given-digits/
 //
-// Complexity: runtime O(1), space O(1).
+// Complexity: runtime O(1), space likely O(1) or (logn), depending on sort()
+// implementation.
 
 class Solution {
 public:
