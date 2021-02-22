@@ -54,8 +54,8 @@ public:
 };
 
 // Alternative Solution: using std::next_permutation().
-// Complexity: runtime O(n!), space is likely O(1) [input/output not
-// considered].
+// Complexity: runtime O(n!), space is likely O(1) or O(logn), depending on
+// sort() [input/output not considered].
 /*
 class Solution {
 public:

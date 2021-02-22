@@ -72,7 +72,8 @@ public:
 // Alternative Solution: sorting in-place (passes, but violates the "no
 // modifying the input array" constraint)
 //
-// Complexity: runtime O(n*logn), space O(1).
+// Complexity: runtime O(n*logn), likely space O(1) or O(logn), depending on
+// sort() impl.
 /*
 class Solution {
 public:

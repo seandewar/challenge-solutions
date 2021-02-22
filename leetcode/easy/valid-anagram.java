@@ -33,8 +33,9 @@ class Solution {
 
 // Alternative Solution: Sort and compare method.
 //
-// Complexity: runtime O(n*logn), space O(1) [toCharArray() is actually O(n)
-// space, as it copies, but thats a Java-specific thing, so we ignore it].
+// Complexity: runtime O(n*logn), likely space O(1) or (logn), depending on
+// sort() impl [toCharArray() is actually O(n) space, as it copies, but thats a
+// Java-specific thing, so we ignore it].
 /*
 class Solution {
     public boolean isAnagram(final String s, final String t) {

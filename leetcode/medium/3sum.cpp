@@ -11,8 +11,8 @@
 //
 // See code comments for more details.
 //
-// Complexity: runtime O(n^2*logn), space O(1) [output not considered in
-// complexity calculations].
+// Complexity: runtime O(n^2*logn), likely space O(1) or (logn), depending on
+// sort() impl [output not considered in complexity calculations].
 
 class Solution {
 public:

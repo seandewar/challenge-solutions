@@ -29,8 +29,9 @@ class Solution {
 }
 
 // Alternative Solution: Sorting with window search.
-// Complexity: runtime O(mlogm + nlogn), space O(1) [O(m+n) if output
-// considered, but we ignore it for complexity calculations].
+// Complexity: runtime O(mlogm + nlogn), space likely O(logm + logn), depending
+// on sort() implementation [O(m+n) if output considered, but we ignore it for
+// complexity calculations].
 /*
 class Solution {
     public int[] intersect(final int[] nums1, final int[] nums2) {

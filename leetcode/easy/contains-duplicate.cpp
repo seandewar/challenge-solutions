@@ -6,7 +6,8 @@
 // to the test cases being used (nums is small), it performs worse for this
 // leetcode question.
 //
-// Complexity: runtime O(n*logn), space O(1).
+// Complexity: runtime O(n*logn), likely space O(1) or (logn) if quicksort, for
+// example.
 
 class Solution {
 public:
@@ -53,7 +54,8 @@ public:
 // that does this without exceptions...
 //
 // Complexity: runtime O(n*logn) [but without the extra O(n) from
-// adjacent_find()], space O(1).
+// adjacent_find()], likely space O(1) or O(logn), depending on sort()
+// implementation.
 /*
 class Solution {
 public:

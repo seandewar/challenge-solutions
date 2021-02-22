@@ -1,7 +1,8 @@
 // https://leetcode.com/problems/merge-intervals/
 //
 // See comments in solution for explaination of algorithm used.
-// Complexity: runtime O(nlog(n)), space O(1).
+// Complexity: runtime O(nlog(n)), likely space O(1) or O(logn) depending on
+// sort() impl.
 //
 // Runtime of the merging itself is O(n), but the sorting is slower, and thus,
 // is the slowest part of the algorithm.
