@@ -24,3 +24,51 @@ public:
         return rightIt.base() - leftIt;
     }
 };
+
+// Alternative Solution: Linear-time, constant-space solution.
+//
+// First, find the sorted range from [0, x) in nums (std::is_sorted_until()).
+// If x equals size(nums), then nums is already sorted, and there's no work to
+// do (return 0).
+//
+// Then, linearly scan the range [x-1, n), where n equals size(nums).
+// While scanning, keep track of the minimum and maximum values we see in the
+// range.
+// If at any point our current maximum value is greater than our current scanned
+// value, save the scan's position to rightIt.
+// (rightIt's position will be the end of the shortest unsorted range in nums
+// once our scan is complete)
+//
+// Binary search in the range [0, x) (std::upper_bound()) for the first value
+// greater than the minimum we found for the range [x-1, n); save its position
+// in leftIt.
+// (leftIt's position will be the beginning of the shortest unsorted range in
+// nums)
+//
+// Finally, to return the length of the shortest unsorted range, return rightIt
+// - leftIt, plus one.
+//
+// Complexity: runtime O(n), space O(1).
+
+class Solution {
+public:
+    int findUnsortedSubarray(const vector<int>& nums) const noexcept
+    {
+        auto it = is_sorted_until(cbegin(nums), cend(nums));
+        if (it-- == cend(nums))
+            return 0;
+
+        int maxVal = *it, minVal = *it;
+        auto leftIt = it, rightIt = it;
+        for (++it; it != cend(nums); ++it) {
+            if (*it < maxVal)
+                rightIt = it;
+
+            maxVal = max(maxVal, *it);
+            minVal = min(minVal, *it);
+        }
+
+        leftIt = upper_bound(cbegin(nums), leftIt + 1, minVal);
+        return (rightIt - leftIt) + 1;
+    }
+};
