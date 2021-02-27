@@ -13,6 +13,8 @@
 // until it's 0.
 // e.g: 100 // 3 == 100 - 3*2^5 - 3*2^0 == 100 - 3*32 - 3*1 == 32 + 1 == 33
 //
+// See the Rust version of this Solution for an example of that approach.
+//
 // Complexity: runtime O(n), space O(1).
 
 class Solution {
