@@ -23,10 +23,8 @@ if !g:localvimrc_sourced_once
     function! s:AddLcAltHeader() abort
         let lines = ['Alternative Solution: TODO.',
                     \ 'Complexity: runtime O(TODO), space O(TODO).']
-        let lines = s:CommentifyLines(lines) + ['', '']
-        call append(line('.'), lines)
-        " move past end of inserted header
-        execute 'normal ' . len(lines) . 'j'
+        let lines = s:CommentifyLines(lines) + ['']
+        call append(line('.') - 1, lines)
     endfunction
 endif
 
