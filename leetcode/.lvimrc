@@ -26,19 +26,33 @@ if !g:localvimrc_sourced_once
         let lines = s:CommentifyLines(lines) + ['']
         call append(line('.') - 1, lines)
     endfunction
+
+    function! s:SetupBuffer() abort
+        if !empty(&buftype) || !&modifiable
+            return
+        endif
+
+        if line('$') == 1 && empty(getline(1))
+            LCMainHeader
+        endif
+
+        setlocal spell
+        redraw " force a redraw now so the message has a chance to show
+        echo "Use :LCAltHeader to add a header for an alternative solution."
+    endfunction
 endif
 
 if g:localvimrc_sourced_once_for_file
     finish
 endif
 
-if line('$') == 1 && empty(getline(1))
-    call s:AddLcMainHeader()
-endif
-
+" make these commands available for all buffers just in case; this also makes
+" this script fail in the sandbox when sourced, which will make localvimrc try
+" to source this script outside of it, which is required for the timer callback
 command! -bar -buffer LCMainHeader call s:AddLcMainHeader()
 command! -bar -buffer LCAltHeader call s:AddLcAltHeader()
-redraw " force a redraw now so the message has a chance to show
-echo "Use :LCAltHeader to add a header for an alternative solution."
 
-setlocal spell
+" some plugin-specific buffers don't set flags such as buftype until after the
+" buffer is created, which can cause us to assume that they are file buffers;
+" wait a bit for the plugin to set the buffer flags first
+call timer_start(0, {-> s:SetupBuffer() })
