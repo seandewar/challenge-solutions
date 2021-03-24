@@ -28,11 +28,9 @@ impl Solution {
         let range = Uniform::from(-self.radius..self.radius);
 
         loop {
-            let x = self.x_center + range.sample(&mut rng);
-            let y = self.y_center + range.sample(&mut rng);
-
-            if (x - self.x_center).powi(2) + (y - self.y_center).powi(2) < self.radius.powi(2) {
-                break vec![x, y];
+            let (x, y) = (range.sample(&mut rng), range.sample(&mut rng));
+            if x.powi(2) + y.powi(2) < self.radius.powi(2) {
+                break vec![self.x_center + x, self.y_center + y];
             }
         }
     }

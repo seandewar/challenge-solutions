@@ -42,17 +42,21 @@ if !g:localvimrc_sourced_once
     endfunction
 endif
 
+exe "lcd " . g:localvimrc_script_dir
+
 if g:localvimrc_sourced_once_for_file
     finish
 endif
 
-" make these commands available for all buffers just in case; this also makes
-" this script fail in the sandbox when sourced, which will make localvimrc try
-" to source this script outside of it, which is required for the timer callback
+" make these commands available for all buffers just in case
 command! -bar -buffer LCMainHeader call s:AddLcMainHeader()
 command! -bar -buffer LCAltHeader call s:AddLcAltHeader()
 
 " some plugin-specific buffers don't set flags such as buftype until after the
 " buffer is created, which can cause us to assume that they are file buffers;
 " wait a bit for the plugin to set the buffer flags first
+"
+" NOTE: we need to make sure localvimrc doesn't load this script in a sandbox,
+" otherwise the timer callback will fail; make sure the stuff we do before this
+" forces localvimrc to run us outside the sandbox!
 call timer_start(0, {-> s:SetupBuffer() })
