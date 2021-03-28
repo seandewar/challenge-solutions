@@ -4,10 +4,10 @@
 
 static UNIQ_MAP: [(&str, usize); 10] = [
     ("zero", 0),
-    ("two", 2),
-    ("four", 4),
-    ("six", 6),
-    ("eight", 8),
+    ("wto", 2),
+    ("ufor", 4),
+    ("xsi", 6),
+    ("geiht", 8),
     ("one", 1),
     ("thre", 3),
     ("five", 5),
