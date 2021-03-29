@@ -38,3 +38,28 @@ impl Solution {
             .collect()
     }
 }
+
+// Alternative Solution: Slightly more efficient and simplified version of the above.
+// Complexity: runtime O(n), space O(1) [O(n) including output].
+
+use std::iter::repeat;
+
+impl Solution {
+    pub fn original_digits(s: String) -> String {
+        let mut sc = [0; 26];
+        s.chars().for_each(|c| sc[c as usize - 'a' as usize] += 1);
+        let sc = |c| sc[c as usize - 'a' as usize];
+
+        (repeat('0').take(sc('z')))
+            .chain(repeat('1').take(sc('o') - sc('z') - sc('w') - sc('u')))
+            .chain(repeat('2').take(sc('w')))
+            .chain(repeat('3').take(sc('h') - sc('g')))
+            .chain(repeat('4').take(sc('u')))
+            .chain(repeat('5').take(sc('f') - sc('u')))
+            .chain(repeat('6').take(sc('x')))
+            .chain(repeat('7').take(sc('v') - sc('f') + sc('u')))
+            .chain(repeat('8').take(sc('g')))
+            .chain(repeat('9').take(sc('i') - sc('x') - sc('g') - sc('f') + sc('u')))
+            .collect()
+    }
+}
