@@ -18,7 +18,6 @@
  *     ListNode(int x) : val(x), next(NULL) {}
  * };
  */
-
 class Solution {
     auto computeListSize(const ListNode* head) const noexcept
     {
@@ -77,9 +76,35 @@ public:
     }
 };
 
+// Alternative Solution: Short version of the above.
+// Complexity: runtime O(n), space O(1).
+
+class Solution {
+public:
+    bool isPalindrome(ListNode* head)
+    {
+        // find the half-way point of the list
+        auto slow = head;
+        for (auto fast = head; fast && fast->next; fast = fast->next->next)
+            slow = slow->next;
+
+        // reverse 2nd half of the list ("prev" will be the head of the reversed
+        // half afterwards)
+        ListNode* prev = nullptr;
+        for (; slow; slow = exchange(slow->next, exchange(prev, slow)));
+
+        // check both list halves for equality
+        for (; prev; prev = prev->next)
+            if (exchange(head, head->next)->val != prev->val)
+                return false;
+
+        return true;
+    }
+};
+
 // Alternative Solution: using extra space.
 // Complexity: runtime O(n), space O(n).
-/*
+
 class Solution {
     auto computeListSize(const ListNode* head) const noexcept
     {
@@ -127,4 +152,3 @@ public:
         return true;
     }
 };
-*/
