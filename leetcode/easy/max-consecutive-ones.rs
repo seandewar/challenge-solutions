@@ -16,3 +16,15 @@ impl Solution {
             .unwrap()
     }
 }
+
+// Alternative Solution: Using split() and splitting at each 0.
+// Complexity: runtime O(n), space O(1).
+
+impl Solution {
+    pub fn find_max_consecutive_ones(nums: Vec<i32>) -> i32 {
+        nums.split(|&n| n == 0)
+            .map(|slice| slice.len())
+            .max()
+            .unwrap() as _
+    }
+}
