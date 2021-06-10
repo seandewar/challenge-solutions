@@ -9,29 +9,25 @@
 // Complexity: runtime O(m*n*log(min(m,n)), space O(max(m,n)).
 
 class Solution {
-    template<bool Row0Only>
-    void sortDiagonal(vector<vector<int>>& mat, const size_t j) const
-    {
-        const auto diagSize = Row0Only ? min(size(mat), size(mat[0]) - j)
-                                       : min(size(mat) - j, size(mat[0]));
-        vector<int> diag;
-        diag.reserve(diagSize);
-        for (size_t i = 0; i < diagSize; ++i)
-            diag.push_back(Row0Only ? mat[i][j + i] : mat[j + i][i]);
-
-        sort(begin(diag), end(diag));
-        for (size_t i = 0; i < diagSize; ++i)
-            (Row0Only ? mat[i][j + i] : mat[j + i][i]) = diag[i];
-    }
-
 public:
     vector<vector<int>> diagonalSort(vector<vector<int>>& mat) const
     {
-        for (size_t y = 0; y < size(mat); ++y)
-            sortDiagonal<false>(mat, y);
-        for (size_t x = 1; x < size(mat[0]); ++x)
-            sortDiagonal<true>(mat, x);
+        const auto m = size(mat), n = size(mat[0]);
+        vector<int> diag;
+        diag.reserve(min(m, n));
 
-        return move(mat);
+        for (size_t i = 0; i < n + m - 1; ++i) {
+            ptrdiff_t x = min(n - 1, i), y = min(m, n + m - i) - 1;
+            while (y >= 0 && x >= 0)
+                diag.push_back(mat[y--][x--]);
+
+            sort(begin(diag), end(diag));
+            for (int v : diag)
+                mat[++y][++x] = v;
+
+            diag.clear();
+        }
+
+        return mat;
     }
 };
