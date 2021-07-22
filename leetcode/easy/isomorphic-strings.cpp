@@ -12,7 +12,7 @@ public:
 
         array<char, 128> m{};
         for (size_t i = 0; i < size(s); ++i) {
-            if (auto& v = m[s[i]]; v == 0)
+            if (char& v = m[s[i]]; v == 0)
                 v = t[i];
             else if (v != t[i])
                 return false;

@@ -23,8 +23,9 @@ if !g:localvimrc_sourced_once
     function! s:AddLcAltHeader() abort
         let lines = ['Alternative Solution: TODO.',
                     \ 'Complexity: runtime O(TODO), space O(TODO).']
-        let lines = s:CommentifyLines(lines) + ['']
-        call append(line('.') - 1, lines)
+        let lines = [''] + s:CommentifyLines(lines) + ['', '']
+        call append(line('.'), lines)
+        call cursor(line('.') + len(lines), 0)
     endfunction
 
     function! s:SetupBuffer() abort
