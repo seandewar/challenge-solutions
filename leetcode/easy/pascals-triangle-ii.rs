@@ -7,7 +7,7 @@ impl Solution {
     pub fn get_row(row_index: i32) -> Vec<i32> {
         let mut result = vec![1; (row_index + 1) as usize];
 
-        for i in 0..=row_index as usize {
+        for i in 2..=row_index as usize {
             let mut prev = 1;
 
             for j in 1..i {
