@@ -1,7 +1,7 @@
 // https://leetcode.com/problems/coin-change
 //
 // Dynamic Programming: Bottom-Top.
-// Complexity: runtime O(n), space O(n).
+// Complexity: runtime O(n*m), space O(n).
 
 impl Solution {
     pub fn coin_change(coins: Vec<i32>, amount: i32) -> i32 {
