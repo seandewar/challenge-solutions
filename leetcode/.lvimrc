@@ -13,7 +13,6 @@ if !g:localvimrc_sourced_once
         let bname_no_ext = expand('%:t:r')
         let lines = ['https://leetcode.com/problems/'
                     \ . (empty(bname_no_ext) ? 'TODO' : bname_no_ext),
-                    \ '',
                     \ 'Complexity: runtime O(TODO), space O(TODO).']
         let lines = s:CommentifyLines(lines) + ['']
         call append(0, lines)
