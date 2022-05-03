@@ -80,14 +80,14 @@ class Solution {
 public:
     int findUnsortedSubarray(const vector<int> &nums) const noexcept
     {
-        auto it1 = prev(is_sorted_until(cbegin(nums), cend(nums)));
-        auto it2 =
-            is_sorted_until(crbegin(nums), crend(nums), greater()).base();
-        if (it1 >= it2)
+        auto it1 = is_sorted_until(cbegin(nums), cend(nums));
+        if (it1 == cend(nums))
             return 0;
 
-        const auto [minIt, maxIt] = minmax_element(it1, next(it2));
-        it1 = upper_bound(cbegin(nums), next(it1), *minIt);
+        auto it2 =
+            is_sorted_until(crbegin(nums), crend(nums), greater()).base();
+        const auto [minIt, maxIt] = minmax_element(prev(it1), next(it2));
+        it1 = upper_bound(cbegin(nums), it1, *minIt);
         it2 = lower_bound(it2, cend(nums), *maxIt);
         return distance(it1, it2);
     }
