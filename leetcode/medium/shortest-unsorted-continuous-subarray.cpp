@@ -4,7 +4,7 @@
 
 class Solution {
 public:
-    int findUnsortedSubarray(const vector<int>& nums) const
+    int findUnsortedSubarray(const vector<int> &nums) const
     {
         auto sortedNums = nums;
         sort(begin(sortedNums), end(sortedNums));
@@ -52,7 +52,7 @@ public:
 
 class Solution {
 public:
-    int findUnsortedSubarray(const vector<int>& nums) const noexcept
+    int findUnsortedSubarray(const vector<int> &nums) const noexcept
     {
         auto it = is_sorted_until(cbegin(nums), cend(nums));
         if (it-- == cend(nums))
@@ -70,5 +70,25 @@ public:
 
         leftIt = upper_bound(cbegin(nums), leftIt + 1, minVal);
         return (rightIt - leftIt) + 1;
+    }
+};
+
+// Alternative Solution: full STL version of the above.
+// Complexity: runtime O(n), space O(1).
+
+class Solution {
+public:
+    int findUnsortedSubarray(const vector<int> &nums) const noexcept
+    {
+        auto it1 = prev(is_sorted_until(cbegin(nums), cend(nums)));
+        auto it2 =
+            is_sorted_until(crbegin(nums), crend(nums), greater()).base();
+        if (it1 >= it2)
+            return 0;
+
+        const auto [minIt, maxIt] = minmax_element(it1, next(it2));
+        it1 = upper_bound(cbegin(nums), next(it1), *minIt);
+        it2 = lower_bound(it2, cend(nums), *maxIt);
+        return distance(it1, it2);
     }
 };
