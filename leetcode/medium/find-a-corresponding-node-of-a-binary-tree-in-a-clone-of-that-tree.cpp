@@ -1,17 +1,6 @@
 // https://leetcode.com/problems/find-a-corresponding-node-of-a-binary-tree-in-a-clone-of-that-tree/
-//
 // Iterative solution.
 // Complexity: runtime O(n), space O(n) [O(logn) if balanced tree].
-
-/**
- * Definition for a binary tree node.
- * struct TreeNode {
- *     int val;
- *     TreeNode *left;
- *     TreeNode *right;
- *     TreeNode(int x) : val(x), left(NULL), right(NULL) {}
- * };
- */
 
 class Solution {
 public:
@@ -36,4 +25,24 @@ public:
 
         return nullptr;
     }
+};
+
+// Alternative Solution: Recursive.
+// Complexity: same.
+
+class Solution {
+public:
+  TreeNode *getTargetCopy(TreeNode *const original, TreeNode *const cloned,
+                          const TreeNode *const target) const noexcept {
+    if (!original)
+      return nullptr;
+
+    if (original == target)
+      return cloned;
+
+    if (const auto result = getTargetCopy(original->left, cloned->left, target))
+      return result;
+
+    return getTargetCopy(original->right, cloned->right, target);
+  }
 };
