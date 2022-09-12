@@ -4,14 +4,19 @@ const std = @import("std");
 const input = blk: {
     @setEvalBranchQuota(20_000);
     const in = @embedFile("input.txt");
-    const len = std.mem.count(u8, in, "\n");
-    var buf: [len]u16 = undefined;
 
-    var iter = std.mem.split(u8, in, "\n");
+    var iter = std.mem.tokenize(u8, in, "\n");
+    var len: u8 = 0;
+    while (iter.next() != null) {
+        len += 1;
+    }
+
+    var buf: [len]u16 = undefined;
+    iter = std.mem.tokenize(u8, in, "\n");
     var i: u8 = 0;
     while (i < len) : (i += 1) {
         const line = iter.next().?;
-        buf[i] = std.fmt.parseInt(u16, line, 10) catch unreachable;
+        buf[i] = std.fmt.parseUnsigned(u16, line, 10) catch unreachable;
     }
 
     std.sort.sort(u16, &buf, {}, std.sort.asc(u16));
