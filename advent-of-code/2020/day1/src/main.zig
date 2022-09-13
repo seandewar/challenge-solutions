@@ -6,14 +6,14 @@ const input = blk: {
     const in = @embedFile("input.txt");
 
     var iter = std.mem.tokenize(u8, in, "\n");
-    var len: u8 = 0;
+    var len = 0;
     while (iter.next() != null) {
         len += 1;
     }
 
     var buf: [len]u16 = undefined;
     iter = std.mem.tokenize(u8, in, "\n");
-    var i: u8 = 0;
+    var i = 0;
     while (i < len) : (i += 1) {
         const line = iter.next().?;
         buf[i] = std.fmt.parseUnsigned(u16, line, 10) catch unreachable;
@@ -55,7 +55,6 @@ pub fn main() !void {
             if (input[i] + input[j] > 2020) {
                 break;
             }
-
             const target = 2020 - input[i] - input[j];
             if (map.get(target)) |count| {
                 var needed_count: u8 = 1;
