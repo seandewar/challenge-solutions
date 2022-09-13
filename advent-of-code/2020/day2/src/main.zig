@@ -1,3 +1,4 @@
+///! Computed fully at compile time!
 const std = @import("std");
 
 pub fn main() !void {
@@ -5,8 +6,8 @@ pub fn main() !void {
         @setEvalBranchQuota(1_000_000);
         const input = @embedFile("input.txt");
 
-        var day1_result: u16 = 0;
-        var day2_result: u16 = 0;
+        var day1_result = 0;
+        var day2_result = 0;
         var iter = std.mem.tokenize(u8, input, "\n");
         while (iter.next()) |line| {
             const b_i = std.mem.indexOfScalar(u8, line, '-').? + 1;
