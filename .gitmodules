@@ -1,0 +1,3 @@
+[submodule "advent-of-code/2021"]
+	path = advent-of-code/2021
+	url = https://github.com/seandewar/advent-of-vimscript
