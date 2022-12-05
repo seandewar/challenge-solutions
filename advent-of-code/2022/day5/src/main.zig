@@ -4,8 +4,8 @@ const parsed_input = blk: {
     @setEvalBranchQuota(1_000_000);
     const input = @embedFile("input");
     var line_it = std.mem.tokenize(u8, input, "\n");
-    var stack_bufs: [9][9 * 8]u8 = undefined;
-    var stack_lens = [_]u8{0} ** stack_bufs.len;
+    const Stack = std.BoundedArray(u8, 9 * 8);
+    var stacks = [_]Stack{Stack.init(0) catch unreachable} ** 9;
     // Parse the diagram (first 8 lines).
     var row_i = 0;
     while (row_i < 8) : (row_i += 1) {
@@ -15,12 +15,11 @@ const parsed_input = blk: {
         while (1 + 4 * crate_i < line.len) : (crate_i += 1) {
             const crate = line[1 + 4 * crate_i];
             if (crate == ' ') continue;
-            stack_bufs[crate_i][stack_lens[crate_i]] = crate;
-            stack_lens[crate_i] += 1;
+            stacks[crate_i].append(crate) catch unreachable;
         }
     }
     // Stacks were parsed in reverse order.
-    for (stack_bufs) |*buf, i| std.mem.reverse(u8, buf[0..stack_lens[i]]);
+    for (stacks) |*stack| std.mem.reverse(u8, stack.slice());
     _ = line_it.next(); // Skip the empty line.
     // Parse the move commands.
     var cmd_count = 0;
@@ -37,25 +36,21 @@ const parsed_input = blk: {
         const to = std.fmt.parseInt(u8, cmd_it.next().?, 10) catch unreachable;
         cmd.* = .{ .count = count, .from_i = from - 1, .to_i = to - 1 };
     }
-    break :blk .{ .stack_bufs = stack_bufs, .stack_lens = stack_lens, .cmds = cmds };
+    break :blk .{ .stacks = stacks, .cmds = cmds };
 };
 
-fn computeAnswer(reverse: bool) [9]u8 {
-    var stack_bufs = parsed_input.stack_bufs;
-    var stacks: [9][]u8 = undefined;
-    for (stacks) |*stack, i| stack.* = stack_bufs[i][0..parsed_input.stack_lens[i]];
-    for (parsed_input.cmds) |*cmd| {
+fn computeAnswer(reverse_move: bool) [9]u8 {
+    var stacks = parsed_input.stacks;
+    for (parsed_input.cmds) |cmd| {
         const from = &stacks[cmd.from_i];
         const to = &stacks[cmd.to_i];
-        const moved = from.*[from.len - cmd.count ..];
-        to.len += moved.len;
-        var i = moved.len;
-        while (i != 0) : (i -= 1)
-            to.*[to.len - i] = moved[if (reverse) i - 1 else moved.len - i];
-        from.len -= moved.len;
+        const move = from.slice()[from.len - cmd.count ..];
+        if (reverse_move) std.mem.reverse(u8, move);
+        to.appendSlice(move) catch unreachable;
+        from.len -= move.len;
     }
     var result: [9]u8 = undefined;
-    for (result) |*top, i| top.* = stacks[i][stacks[i].len - 1];
+    for (result) |*top, i| top.* = stacks[i].get(stacks[i].len - 1);
     return result;
 }
 const answers = blk: {
