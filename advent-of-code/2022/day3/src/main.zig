@@ -4,7 +4,8 @@ const answers = blk: {
     @setEvalBranchQuota(100_000);
     const input = @embedFile("input");
     var line_it = std.mem.tokenize(u8, input, "\n");
-    var p2_seen = [_]u3{0} ** (1 + 'z' - 'A');
+    const ElfSet = std.StaticBitSet(3);
+    var p2_seen = [_]ElfSet{ElfSet.initEmpty()} ** (1 + 'z' - 'A');
     var p2_elf_i = 0;
     var p1_answer: u32 = 0;
     var p2_answer: u32 = 0;
@@ -18,10 +19,10 @@ const answers = blk: {
             }
         }
         for (line) |item| {
-            p2_seen[item - 'A'] |= 1 << p2_elf_i;
-            if (p2_seen[item - 'A'] == 0b111) {
+            p2_seen[item - 'A'].set(p2_elf_i);
+            if (p2_seen[item - 'A'].count() == 3) {
                 p2_answer += if (std.ascii.isLower(item)) item - 'a' + 1 else item - 'A' + 27;
-                std.mem.set(u3, &p2_seen, 0);
+                for (p2_seen) |*set| set.mask = 0;
                 break;
             }
         }
