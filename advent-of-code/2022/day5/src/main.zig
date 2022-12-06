@@ -27,12 +27,9 @@ const parsed_input = blk: {
     while (cmd_count_it.next()) |_| cmd_count += 1;
     var cmds: [cmd_count]struct { count: u8, from_i: u8, to_i: u8 } = undefined;
     for (cmds) |*cmd| {
-        var cmd_it = std.mem.split(u8, line_it.next().?, " ");
-        _ = cmd_it.next().?; // Skip "move".
+        var cmd_it = std.mem.tokenize(u8, line_it.next().?, "move frt");
         const count = std.fmt.parseInt(u8, cmd_it.next().?, 10) catch unreachable;
-        _ = cmd_it.next().?; // Skip "from".
         const from = std.fmt.parseInt(u8, cmd_it.next().?, 10) catch unreachable;
-        _ = cmd_it.next().?; // Skip "to".
         const to = std.fmt.parseInt(u8, cmd_it.next().?, 10) catch unreachable;
         cmd.* = .{ .count = count, .from_i = from - 1, .to_i = to - 1 };
     }
