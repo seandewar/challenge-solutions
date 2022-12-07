@@ -1,39 +1,34 @@
 const std = @import("std");
 
+const Node = struct {
+    const RefBuffer = std.BoundedArray(*@This(), 64);
+    name: []const u8,
+    size: u32 = 0,
+    children: RefBuffer = RefBuffer.init(0) catch unreachable,
+};
 const node_buf = blk: {
-    const Node = struct {
-        const Children = std.BoundedArray(*@This(), 64);
-        name: []const u8,
-        size: u32 = 0,
-        parent: ?*@This(),
-        children: Children = Children.init(0) catch unreachable,
-    };
     @setEvalBranchQuota(1_000_000);
     const input = @embedFile("input");
-    var buf = std.BoundedArray(Node, 1024).init(0) catch unreachable;
-    buf.append(.{ .name = "", .parent = null }) catch unreachable;
-    var cwd = &buf.slice()[0];
+    var buf = std.BoundedArray(Node, 1024).init(1) catch unreachable;
+    buf.slice()[0] = .{ .name = "" };
+    var path = Node.RefBuffer.init(1) catch unreachable;
+    path.slice()[0] = &buf.slice()[0];
     var line_it = std.mem.tokenize(u8, input, "\n");
     _ = line_it.next().?; // Skip "$ cd /" (we already start in the root directory).
     while (line_it.next()) |line| {
-        if (std.mem.startsWith(u8, line, "dir ")) { // ls child directory
-            buf.append(.{ .name = line["dir ".len..], .parent = cwd }) catch unreachable;
+        const cwd = path.get(path.len - 1);
+        if (std.mem.startsWith(u8, line, "dir ")) { // listed directory
+            buf.append(.{ .name = line[4..] }) catch unreachable;
             cwd.children.append(&buf.slice()[buf.len - 1]) catch unreachable;
-        } else if (std.ascii.isDigit(line[0])) { // ls child file
-            const slice = line[0..std.mem.indexOfScalar(u8, line, ' ').?];
-            const size = std.fmt.parseInt(u32, slice, 10) catch unreachable;
-            var dir_node: ?*Node = cwd;
-            while (dir_node) |dir| {
-                dir.size += size;
-                dir_node = dir.parent;
-            }
-        } else if (std.mem.startsWith(u8, line, "$ cd ")) { // change directory
-            const dir = line["$ cd ".len..];
-            if (std.mem.eql(u8, dir, "..")) {
-                cwd = cwd.parent.?;
-            } else for (cwd.children.slice()) |child| {
-                if (std.mem.eql(u8, child.name, dir)) {
-                    cwd = child;
+        } else if (std.ascii.isDigit(line[0])) { // listed file
+            const size = std.fmt.parseInt(u32, line[0..std.mem.indexOfScalar(u8, line, ' ').?], 10) catch unreachable;
+            for (path.slice()) |node| node.size += size;
+        } else if (std.mem.eql(u8, line, "$ cd ..")) { // up a directory
+            _ = path.pop();
+        } else if (std.mem.startsWith(u8, line, "$ cd ")) { // down a directory
+            for (cwd.children.slice()) |node| {
+                if (std.mem.eql(u8, node.name, line[5..])) {
+                    path.append(node) catch unreachable;
                     break;
                 }
             }
