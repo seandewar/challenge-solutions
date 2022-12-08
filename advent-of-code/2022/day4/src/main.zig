@@ -4,8 +4,8 @@ const answers = blk: {
     @setEvalBranchQuota(1_000_000);
     const input = @embedFile("input");
     var line_it = std.mem.tokenize(u8, input, "\n");
-    var p1: u32 = 0;
-    var p2: u32 = 0;
+    var p1 = 0;
+    var p2 = 0;
     while (line_it.next()) |line| {
         var ranges_it = std.mem.split(u8, line, ",");
         var range_it = std.mem.split(u8, ranges_it.next().?, "-");
