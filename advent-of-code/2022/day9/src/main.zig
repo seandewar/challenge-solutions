@@ -23,7 +23,7 @@ const answers = blk: {
     var min_pos = Position{};
     var max_pos = Position{};
     var line_it = std.mem.tokenize(u8, input, "\n");
-    while (line_it.next()) |line| {
+    while (line_it.next()) |line| { // Compute grid bounds for marking visited tail positions.
         const cmd = parseCommand(line);
         rope_pos[0].x += cmd.dir.x * cmd.steps;
         rope_pos[0].y += cmd.dir.y * cmd.steps;
@@ -39,15 +39,15 @@ const answers = blk: {
     while (line_it.next()) |line| {
         var cmd = parseCommand(line);
         while (cmd.steps != 0) : (cmd.steps -= 1) {
-            rope_pos[0].x += cmd.dir.x;
+            rope_pos[0].x += cmd.dir.x; // Move head part (H).
             rope_pos[0].y += cmd.dir.y;
-            for (rope_pos[1..]) |*pos, i| {
-                const delta = Position{ .x = rope_pos[i].x - pos.x, .y = rope_pos[i].y - pos.y };
-                if (std.math.absCast(delta.x) < 2 and std.math.absCast(delta.y) < 2) break;
+            for (rope_pos[1..]) |*pos, tail_i| { // Move tails parts (1-9).
+                const delta = Position{ .x = rope_pos[tail_i].x - pos.x, .y = rope_pos[tail_i].y - pos.y };
+                if (std.math.absCast(delta.x) < 2 and std.math.absCast(delta.y) < 2) break; // Adjacent to previous part - no movement.
                 pos.x += std.math.clamp(delta.x, -1, 1);
                 pos.y += std.math.clamp(delta.y, -1, 1);
-                if (i == 0) tail_visit_grid[pos.y - min_pos.y][pos.x - min_pos.x] |= 0b01;
-                if (i == 8) tail_visit_grid[pos.y - min_pos.y][pos.x - min_pos.x] |= 0b10;
+                if (tail_i == 0) tail_visit_grid[pos.y - min_pos.y][pos.x - min_pos.x] |= 0b01; // First part of tail (1) visited.
+                if (tail_i == 8) tail_visit_grid[pos.y - min_pos.y][pos.x - min_pos.x] |= 0b10; // Last part of tail (9) visited.
             }
         }
     }
