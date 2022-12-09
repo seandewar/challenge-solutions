@@ -34,7 +34,7 @@ const answers = blk: {
     }
     rope_pos[0] = .{};
     var tail_visit_grid = std.mem.zeroes([1 + max_pos.y - min_pos.y][1 + max_pos.x - min_pos.x]u2);
-    tail_visit_grid[0][0] = 0b11;
+    tail_visit_grid[-min_pos.y][-min_pos.x] = 0b11;
     line_it = std.mem.tokenize(u8, input, "\n");
     while (line_it.next()) |line| {
         var cmd = parseCommand(line);
