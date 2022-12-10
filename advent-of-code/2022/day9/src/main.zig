@@ -56,7 +56,7 @@ const answers = blk: {
     for (tail_visit_grid) |row| {
         for (row) |visited| {
             p1 += visited & 1;
-            if (visited & 0b10 != 0) p2 += 1;
+            p2 += (visited >> 1) & 1;
         }
     }
     break :blk .{ p1, p2 };
