@@ -22,7 +22,7 @@ const answers = blk: {
     var rope_pos = [_]Position{.{}} ** 10;
     var min_pos = Position{};
     var max_pos = Position{};
-    var line_it = std.mem.tokenize(u8, input, "\n");
+    var line_it = std.mem.tokenize(u8, input, std.cstr.line_sep);
     while (line_it.next()) |line| { // Compute grid bounds for marking visited tail positions.
         const cmd = parseCommand(line);
         rope_pos[0].x += cmd.dir.x * cmd.steps;
@@ -35,7 +35,7 @@ const answers = blk: {
     rope_pos[0] = .{};
     var tail_visit_grid = std.mem.zeroes([1 + max_pos.y - min_pos.y][1 + max_pos.x - min_pos.x]u2);
     tail_visit_grid[-min_pos.y][-min_pos.x] = 0b11;
-    line_it = std.mem.tokenize(u8, input, "\n");
+    line_it = std.mem.tokenize(u8, input, std.cstr.line_sep);
     while (line_it.next()) |line| {
         var cmd = parseCommand(line);
         while (cmd.steps != 0) : (cmd.steps -= 1) {

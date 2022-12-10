@@ -3,7 +3,7 @@ const std = @import("std");
 const parsed_input = blk: {
     @setEvalBranchQuota(1_000_000);
     const input = @embedFile("input");
-    var line_it = std.mem.tokenize(u8, input, "\n");
+    var line_it = std.mem.tokenize(u8, input, std.cstr.line_sep);
     const Stack = std.BoundedArray(u8, 9 * 8);
     var stacks = [_]Stack{Stack.init(0) catch unreachable} ** 9;
     // Parse the diagram (first 8 lines).

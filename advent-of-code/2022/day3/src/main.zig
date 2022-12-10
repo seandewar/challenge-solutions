@@ -3,7 +3,7 @@ const std = @import("std");
 const answers = blk: {
     @setEvalBranchQuota(100_000);
     const input = @embedFile("input");
-    var line_it = std.mem.tokenize(u8, input, "\n");
+    var line_it = std.mem.tokenize(u8, input, std.cstr.line_sep);
     const ElfSet = std.StaticBitSet(3);
     var p2_seen = [_]ElfSet{ElfSet.initEmpty()} ** (1 + 'z' - 'A');
     var p2_elf_i = 0;
