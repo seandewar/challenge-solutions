@@ -3,7 +3,7 @@ const std = @import("std");
 const answers = blk: {
     @setEvalBranchQuota(1_000_000);
     const input = @embedFile("input");
-    var line_it = std.mem.tokenize(u8, input, "\n");
+    var line_it = std.mem.tokenize(u8, input, std.cstr.line_sep);
     var p1 = 0;
     var p2 = 0;
     while (line_it.next()) |line| {

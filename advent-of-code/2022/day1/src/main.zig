@@ -4,7 +4,7 @@ const top3 = blk: {
     @setEvalBranchQuota(100_000);
     const input = @embedFile("input");
     var result = [_]u32{0} ** 3;
-    var line_it = std.mem.split(u8, input, "\n");
+    var line_it = std.mem.split(u8, input, std.cstr.line_sep);
     var accum: u32 = 0;
     while (line_it.next()) |line| {
         if (line.len == 0) {
@@ -13,6 +13,8 @@ const top3 = blk: {
             accum = 0;
         } else accum += std.fmt.parseInt(u32, line, 10) catch unreachable;
     }
+    const i = std.mem.indexOfMin(u32, &result);
+    result[i] = @max(result[i], accum);
     break :blk result;
 };
 

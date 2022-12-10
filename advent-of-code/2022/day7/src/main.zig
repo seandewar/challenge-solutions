@@ -13,7 +13,7 @@ const node_buf = blk: {
     buf.slice()[0] = .{ .name = "" };
     var path = Node.RefBuffer.init(1) catch unreachable;
     path.slice()[0] = &buf.slice()[0];
-    var line_it = std.mem.tokenize(u8, input, "\n");
+    var line_it = std.mem.tokenize(u8, input, std.cstr.line_sep);
     _ = line_it.next().?; // Skip "$ cd /" (we already start in the root directory).
     while (line_it.next()) |line| {
         const cwd = path.get(path.len - 1);

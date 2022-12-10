@@ -5,7 +5,7 @@ const tree_grid = blk: {
     const input = @embedFile("input");
     var grid: [99]*const [99]u8 = undefined;
     var line_i = 0;
-    var line_it = std.mem.tokenize(u8, input, "\n");
+    var line_it = std.mem.tokenize(u8, input, std.cstr.line_sep);
     while (line_it.next()) |line| : (line_i += 1) grid[line_i] = line[0..];
     break :blk grid;
 };

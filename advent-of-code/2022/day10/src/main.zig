@@ -8,7 +8,7 @@ const answers = blk: {
     var instr: struct { addx: i8 = 0, cycles: u8 = 0 } = .{};
     var p1 = 0;
     var p2 = [_][40]u8{.{'#'} ** 40} ** 6; // Assume lit (slightly simplifies P2).
-    var line_it = std.mem.tokenize(u8, input, "\n");
+    var line_it = std.mem.tokenize(u8, input, std.cstr.line_sep);
     while (instr.cycles != 0 or line_it.peek() != null) {
         if (instr.cycles == 0) {
             const line = line_it.next().?;

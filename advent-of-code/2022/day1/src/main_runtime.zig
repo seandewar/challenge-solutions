@@ -10,7 +10,9 @@ pub fn main() !void {
     var top3 = [_]u32{0} ** 3;
     var accum: u32 = 0;
     var line_buf: [32]u8 = undefined;
-    while (try reader.readUntilDelimiterOrEof(&line_buf, '\n')) |line| {
+    while (try reader.readUntilDelimiterOrEof(&line_buf, '\n')) |raw_line| {
+        // Assume annoying CRLF on Windows.
+        const line = if (@import("builtin").os.tag == .windows) raw_line[0 .. raw_line.len - 1] else raw_line;
         if (line.len == 0) {
             const i = std.mem.indexOfMin(u32, &top3);
             top3[i] = @max(top3[i], accum);
