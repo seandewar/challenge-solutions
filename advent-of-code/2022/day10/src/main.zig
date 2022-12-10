@@ -5,28 +5,24 @@ const answers = blk: {
     const input = @embedFile("input");
     var x = 1;
     var cycle = 0; // 0-based to simplify part 2 pixel putting.
-    var pending_instr: ?struct { x_add: i8 = 0, cycles: u8 } = null;
+    var instr: struct { addx: i8 = 0, cycles: u8 = 0 } = .{};
     var p1 = 0;
-    var p2: [6][40]u8 = undefined;
-    p2[0][0] = '#'; // X starts at 1, so first pixel is always lit.
+    var p2 = [_][40]u8{.{'#'} ** 40} ** 6; // Assume lit (slightly simplifies P2).
     var line_it = std.mem.tokenize(u8, input, "\n");
-    while (pending_instr != null or line_it.peek() != null) {
-        if (pending_instr == null) {
+    while (instr.cycles != 0 or line_it.peek() != null) {
+        if (instr.cycles == 0) {
             const line = line_it.next().?;
             if (std.mem.startsWith(u8, line, "addx ")) {
-                pending_instr = .{ .x_add = std.fmt.parseInt(i8, line[5..], 10) catch unreachable, .cycles = 2 };
+                instr = .{ .addx = std.fmt.parseInt(i8, line[5..], 10) catch unreachable, .cycles = 2 };
             } else { // noop
-                pending_instr = .{ .cycles = 1 };
+                instr = .{ .cycles = 1 };
             }
         }
         cycle += 1;
-        pending_instr.?.cycles -= 1;
-        if (pending_instr.?.cycles == 0) {
-            x += pending_instr.?.x_add;
-            pending_instr = null;
-        }
+        instr.cycles -= 1;
+        if (instr.cycles == 0) x += instr.addx;
         if ((cycle + 21) % 40 == 0) p1 += (cycle + 1) * x;
-        if (cycle < 6 * 40) p2[cycle / 40][cycle % 40] = if (cycle % 40 >= x - 1 and cycle % 40 <= x + 1) '#' else ' ';
+        if (cycle < 6 * 40 and (cycle % 40 < x - 1 or cycle % 40 > x + 1)) p2[cycle / 40][cycle % 40] = ' ';
     }
     break :blk .{ p1, p2 };
 };
