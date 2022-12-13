@@ -7,10 +7,10 @@ fn isOrdered(lines: [2][]const u8) ?bool {
             var inner_pair = pair;
             for (inner_pair) |*packet, pair_i| {
                 if (packet.*[0] != '[') {
-                    if (std.mem.indexOfScalar(u8, packet.*, ',')) |len| {
+                    pair[pair_i] = if (std.mem.indexOfScalar(u8, packet.*, ',')) |len| blk: {
                         packet.len = len;
-                        pair[pair_i] = pair[pair_i][len..];
-                    } else pair[pair_i].len = 0;
+                        break :blk pair[pair_i][len..];
+                    } else "";
                     continue;
                 }
                 var len: usize = 0;
@@ -24,7 +24,7 @@ fn isOrdered(lines: [2][]const u8) ?bool {
                 packet.* = packet.*[1 .. 1 + len];
                 pair[pair_i] = pair[pair_i][2 + len ..];
             }
-            if (isOrdered(inner_pair)) |valid| return valid;
+            if (isOrdered(inner_pair)) |ordered| return ordered;
         } else { // Integer vs Integer.
             var ints: [2]u8 = undefined;
             for (pair) |*packet, pair_i| {
