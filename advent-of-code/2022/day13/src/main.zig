@@ -6,15 +6,12 @@ fn lessThan(lhs: []const u8, rhs: []const u8) ?bool {
         if (pair[0][0] == '[' or pair[1][0] == '[') { // List vs List or List vs Integer.
             var inner_pair = pair;
             for (inner_pair) |*packet, pair_i| {
-                if (packet.*[0] != '[') {
-                    pair[pair_i] = if (std.mem.indexOfScalar(u8, packet.*, ',')) |len| blk: {
-                        packet.len = len;
-                        break :blk pair[pair_i][len..];
-                    } else "";
+                if (packet.*[0] != '[') { // Integer.
+                    if (std.mem.indexOfScalar(u8, packet.*, ',')) |len| packet.len = len;
                     continue;
                 }
+                var depth: usize = 0;
                 var len: usize = 0;
-                var depth: u8 = 0;
                 for (packet.*[1..]) |c| {
                     if (c == '[') depth += 1;
                     if (c == ']' and depth == 0) break;
@@ -30,23 +27,18 @@ fn lessThan(lhs: []const u8, rhs: []const u8) ?bool {
             for (pair) |*packet, pair_i| {
                 const str = if (std.mem.indexOfScalar(u8, packet.*, ',')) |len| packet.*[0..len] else packet.*;
                 ints[pair_i] = std.fmt.parseInt(u8, str, 10) catch unreachable;
-                packet.* = packet.*[str.len..];
             }
-            if (ints[0] < ints[1]) return true;
-            if (ints[0] > ints[1]) return false;
+            if (ints[0] != ints[1]) return ints[0] < ints[1];
         }
-        for (pair) |*packet| { // Skip trailing ','s, if any.
-            if (packet.len != 0 and packet.*[0] == ',') packet.* = packet.*[1..];
-        }
+        for (pair) |*packet| packet.* = if (std.mem.indexOfScalar(u8, packet.*, ',')) |i| packet.*[i + 1 ..] else "";
     }
-    if (pair[0].len == 0 and pair[1].len == 0) return null; // Equal.
-    return pair[0].len == 0;
+    return if (pair[0].len != 0 or pair[1].len != 0) pair[0].len == 0 else null;
 }
 const answers = blk: {
     @setEvalBranchQuota(1_000_000);
     const input = @embedFile("input");
     var p1 = 0;
-    var p2_decoder_i: [2]usize = if (lessThan("[[2]]", "[[6]]").?) .{ 1, 2 } else .{ 2, 1 };
+    var p2_decoder_i = [_]usize{ 1, 2 };
     var pair_i = 1;
     var line_it = std.mem.tokenize(u8, input, std.cstr.line_sep);
     while (line_it.next()) |lhs| : (pair_i += 1) {
