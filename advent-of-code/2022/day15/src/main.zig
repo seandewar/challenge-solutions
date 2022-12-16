@@ -1,10 +1,5 @@
 const std = @import("std");
 
-fn parseNextCoord(line: []const u8, start_i: *usize) i32 {
-    const i = std.mem.indexOfScalarPos(u8, line, start_i.*, '=').? + 1;
-    start_i.* = std.mem.indexOfAnyPos(u8, line, i, ",:") orelse line.len;
-    return std.fmt.parseInt(i32, line[i..start_i.*], 10) catch unreachable;
-}
 const parsed_input = blk: {
     @setEvalBranchQuota(100_000);
     const input = @embedFile("input");
@@ -16,13 +11,12 @@ const parsed_input = blk: {
     line_it = std.mem.tokenize(u8, input, std.cstr.line_sep);
     for (sensors) |*sensor| {
         const line = line_it.next().?;
-        var i: usize = 0;
-        sensor.* = .{
-            .sx = parseNextCoord(line, &i), // Sensor coords.
-            .sy = parseNextCoord(line, &i),
-            .bx = parseNextCoord(line, &i), // Nearest beacon coords.
-            .by = parseNextCoord(line, &i),
-        };
+        var start_i: usize = 0;
+        for (.{ "sx", "sy", "bx", "by" }) |field| {
+            const i = std.mem.indexOfScalarPos(u8, line, start_i, '=').? + 1;
+            start_i = std.mem.indexOfAnyPos(u8, line, i, ",:") orelse line.len;
+            @field(sensor.*, field) = std.fmt.parseInt(i32, line[i..start_i], 10) catch unreachable;
+        }
         if (sensor.by == 2_000_000) p1_bxs_on_y.append(sensor.bx) catch unreachable;
     }
     if (p1_bxs_on_y.len != 0) { // Sort and dedup bxs on line y=2,000,000.
@@ -40,7 +34,7 @@ fn computeExclusions(y: i32, p2: bool) std.BoundedArray(Interval, parsed_input.s
     for (parsed_input.sensors) |sensor| {
         const d = std.math.absCast(sensor.by - sensor.sy) + std.math.absCast(sensor.bx - sensor.sx); // Manhattan dist.
         if (std.math.absCast(sensor.sy - y) > d) continue; // Line further away than the beacon.
-        // On the line y=2,000,000, all x where d>=|sy-y|+|sx-x| can't have other beacons.
+        // On the y line, all x where d>=|sy-y|+|sx-x| can't have other beacons.
         // To find the exclusion interval, solve for the two values of x where the rhs equals d.
         const xa = sensor.sx + (std.math.absInt(sensor.sy - y) catch unreachable) - @intCast(i32, d);
         const xb = sensor.sx - (std.math.absInt(sensor.sy - y) catch unreachable) + @intCast(i32, d);
