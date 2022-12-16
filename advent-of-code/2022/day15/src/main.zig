@@ -14,18 +14,18 @@ const parsed_input = blk: {
     var sensors: [sensor_count]struct { sx: i32, sy: i32, bx: i32, by: i32 } = undefined;
     var p1_bxs_on_y = std.BoundedArray(i32, sensor_count).init(0) catch unreachable;
     line_it = std.mem.tokenize(u8, input, std.cstr.line_sep);
-    for (sensors) |*info| {
+    for (sensors) |*sensor| {
         const line = line_it.next().?;
         var i: usize = 0;
-        info.* = .{
+        sensor.* = .{
             .sx = parseNextCoord(line, &i), // Sensor coords.
             .sy = parseNextCoord(line, &i),
             .bx = parseNextCoord(line, &i), // Nearest beacon coords.
             .by = parseNextCoord(line, &i),
         };
-        if (info.by == 2_000_000) p1_bxs_on_y.append(info.bx) catch unreachable;
+        if (sensor.by == 2_000_000) p1_bxs_on_y.append(sensor.bx) catch unreachable;
     }
-    if (p1_bxs_on_y.len != 0) { // Sort and dedup bxs on line y.
+    if (p1_bxs_on_y.len != 0) { // Sort and dedup bxs on line y=2,000,000.
         std.sort.sort(i32, p1_bxs_on_y.slice(), {}, std.sort.asc(i32));
         const slice = p1_bxs_on_y.slice();
         p1_bxs_on_y.len = 1;
@@ -42,13 +42,14 @@ fn computeExclusions(y: i32, p2: bool) std.BoundedArray(Interval, parsed_input.s
         if (std.math.absCast(sensor.sy - y) > d) continue; // Line further away than the beacon.
         // On the line y=2,000,000, all x where d>=|sy-y|+|sx-x| can't have other beacons.
         // To find the exclusion interval, solve for the two values of x where the rhs equals d.
-        var xa = sensor.sx + (std.math.absInt(sensor.sy - y) catch unreachable) - @intCast(i32, d);
-        var xb = sensor.sx - (std.math.absInt(sensor.sy - y) catch unreachable) + @intCast(i32, d);
+        const xa = sensor.sx + (std.math.absInt(sensor.sy - y) catch unreachable) - @intCast(i32, d);
+        const xb = sensor.sx - (std.math.absInt(sensor.sy - y) catch unreachable) + @intCast(i32, d);
+        var interval = Interval{ .x0 = @min(xa, xb), .x1 = @max(xa, xb) };
         if (p2) {
-            xa = std.math.clamp(xa, 0, 4_000_000);
-            xb = std.math.clamp(xb, 0, 4_000_000);
+            if (interval.x1 < 0 or interval.x0 > 4_000_000) continue;
+            interval = .{ .x0 = @max(0, interval.x0), .x1 = @min(4_000_000, interval.x1) };
         }
-        intervals.append(.{ .x0 = @min(xa, xb), .x1 = @max(xa, xb) }) catch unreachable;
+        intervals.append(interval) catch unreachable;
     }
     if (intervals.len < 2) return intervals;
     std.sort.sort(Interval, intervals.slice(), {}, struct { // Sort so interval merging is easy.
@@ -84,14 +85,12 @@ const p1 = blk: {
 pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
     try stdout.print("Day15 (P1 at comptime): P1: {}", .{p1});
-    var p2_x: i32 = 0;
     var p2_y: i32 = 0;
     while (p2_y <= 4_000_000) : (p2_y += 1) {
-        const intervals = computeExclusions(p2_y, true);
-        if (intervals.len == 1 and intervals.get(0).x0 > 0) p2_x = intervals.get(0).x0 - 1;
-        if (intervals.len == 1 and intervals.get(0).x1 < 4_000_000) p2_x = intervals.get(0).x1 + 1;
-        if (intervals.len == 2) p2_x = intervals.get(0).x1 + 1;
-        if (p2_x != 0) break;
+        const interval = computeExclusions(p2_y, true).get(0);
+        if (interval.x0 == 0 and interval.x1 == 4_000_000) continue;
+        const p2_x: i64 = if (interval.x0 != 0) interval.x0 - 1 else interval.x1 + 1;
+        try stdout.print(", P2: {}\n", .{4_000_000 * p2_x + p2_y});
+        return;
     }
-    try stdout.print(", P2: {}\n", .{4_000_000 * @as(i64, p2_x) + p2_y});
 }
