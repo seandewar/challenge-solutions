@@ -17,7 +17,7 @@ const parsed_input = blk: {
             .flow_rate = std.fmt.parseInt(u8, flow_rate_str, 10) catch unreachable,
             .to_is = undefined,
         };
-        if (std.mem.eql(u8, valve.name, "AA")) start_i = @intCast(u8, valve_i);
+        if (std.mem.eql(u8, valve.name, "AA")) start_i = valve_i;
     }
     line_it = std.mem.tokenize(u8, input, std.cstr.line_sep);
     for (valves) |*valve| {
@@ -33,7 +33,7 @@ const parsed_input = blk: {
         }
         valve.to_is = to_is.slice();
     }
-    var min_dists = [_][valve_count]u8{.{std.math.maxInt(u8)} ** valve_count} ** valve_count;
+    var min_dists = [_][valve_count]u8{.{0xff} ** valve_count} ** valve_count;
     for (min_dists) |*dists, valve_i| {
         dists.*[valve_i] = 0;
         var step = 0;
@@ -42,7 +42,7 @@ const parsed_input = blk: {
             for (dists.*) |dist, from_i| {
                 if (dist != step) continue;
                 for (valves[from_i].to_is) |to_i| {
-                    if (dists.*[to_i] != std.math.maxInt(u8)) continue;
+                    if (dists.*[to_i] != 0xff) continue;
                     dists.*[to_i] = dist + 1;
                     relax_next_step = step + 1;
                 }
@@ -66,7 +66,7 @@ fn computeFlow(open_valves: *[parsed_input.valves.len]bool, time: u8, helpers: [
         }
         if (max_flow == 0) { // Helper has no more possible moves.
             var new_helpers = helpers;
-            new_helpers[helper_i] = .{ .time = std.math.maxInt(u8) };
+            new_helpers[helper_i] = .{ .time = 0xff };
             max_flow = computeFlow(open_valves, time, new_helpers); // Other helper may not be finished yet.
         }
         return max_flow + @as(u16, parsed_input.valves[helper.valve_i].flow_rate) * time;
@@ -80,6 +80,6 @@ fn computeFlow(open_valves: *[parsed_input.valves.len]bool, time: u8, helpers: [
 pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
     var open_valves = [_]bool{false} ** parsed_input.valves.len;
-    try stdout.print("Day16 (comptime parsing): P1: {}", .{computeFlow(&open_valves, 30, .{ .{}, .{ .time = std.math.maxInt(u8) } })});
+    try stdout.print("Day16 (comptime parsing): P1: {}", .{computeFlow(&open_valves, 30, .{ .{}, .{ .time = 0xff } })});
     try stdout.print(", P2: {}\n", .{computeFlow(&open_valves, 26, .{ .{}, .{} })});
 }
