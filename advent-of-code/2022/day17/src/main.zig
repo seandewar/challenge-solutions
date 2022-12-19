@@ -1,3 +1,6 @@
+//! This solution is unlikely to work for *all* possible inputs, but should
+//! work for most. To increase the accuracy of this solution, change `seen_map`
+//! to remember more rows to compare with later.
 const std = @import("std");
 const shapes = [_]u16{
     0b0000_0000_0000_1111,
@@ -6,20 +9,21 @@ const shapes = [_]u16{
     0b1000_1000_1000_1000,
     0b0000_0000_1100_1100,
 };
+const shape_heights = [_]usize{ 1, 3, 3, 4, 2 };
 const cmds = blk: { // Just consider the first line.
     @setEvalBranchQuota(100_000);
     const input = @embedFile("input");
     break :blk input[0 .. std.mem.indexOf(u8, input, std.cstr.line_sep) orelse input.len];
 };
 
-fn shapeDo(grid: [][7]bool, floor_y: usize, shape_i: usize, shape_x: u8, shape_y: usize, comptime action: enum {
+fn shapeDo(grid: [][7]bool, max_ys: *[7]usize, shape_i: usize, shape_x: u8, shape_y: usize, comptime action: enum {
     validateX,
     validateY,
     rest,
-}) union(enum) { is_valid: bool, max_y: usize } {
+}) !bool {
+    const max_y = std.mem.max(usize, max_ys);
     var i: u8 = 0;
-    var max_y: usize = 0;
-    var shape = shapes[shape_i % shapes.len];
+    var shape = shapes[shape_i];
     while (shape != 0) : ({
         i += 1;
         shape >>= 1;
@@ -27,62 +31,62 @@ fn shapeDo(grid: [][7]bool, floor_y: usize, shape_i: usize, shape_x: u8, shape_y
         if (shape & 1 == 0) continue;
         const x = shape_x + 3 - (i % 4);
         const y = shape_y + i / 4;
-        max_y = @max(max_y, y);
         switch (action) {
-            .validateX => if (x >= 7 or grid[y - 1 - floor_y][x]) break,
-            .validateY => if (y <= floor_y or grid[y - 1 - floor_y][x]) break,
-            .rest => grid[y - 1 - floor_y][x] = true,
+            .validateX => if (x >= 7 or (y <= max_y and grid[(y - 1) % grid.len][x])) return false,
+            .validateY => if (y <= max_y -| grid.len or (y <= max_y and grid[(y - 1) % grid.len][x]))
+                return if (y > 0 and y <= max_y -| grid.len) error.gridTooSmall else false,
+            .rest => {
+                max_ys.*[x] = @max(max_ys.*[x], y);
+                grid[(y - 1) % grid.len][x] = true;
+            },
         }
     }
-    return switch (action) {
-        .validateX, .validateY => .{ .is_valid = shape == 0 },
-        .rest => .{ .max_y = max_y },
-    };
+    return true;
 }
 pub fn main() !void {
     const stdout = std.io.getStdOut().writer();
-    var grid = [_][7]bool{.{false} ** 7} ** 8192; // Index 0 is the bottom-most point of the grid.
-    var floor_y: usize = 0;
-    var max_y: usize = 0;
-    var shape_i: usize = 0;
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var seen_map = std.AutoHashMap(struct {
+        cmd_i: usize,
+        shape_i: usize,
+        y_diffs: [7]usize,
+    }, struct { shape_num: usize, max_y: usize }).init(allocator);
+    var grid = [_][7]bool{.{false} ** 7} ** 512;
+    var max_ys = [_]usize{0} ** 7;
+    var shape_num: usize = 1;
+    var max_y_skip: usize = 0;
+    var shape_num_skip: usize = 0;
     var shape_x: u8 = 2; // Bottom-left of the shape.
     var shape_y: usize = 4;
     var cmd_i: usize = 0;
-    var repeat_start: ?struct { cmd_i: usize, shape_i: usize, max_y: usize } = null;
-    while (shape_i < 1_000_000_000_000) {
+    while (shape_num + shape_num_skip <= 1_000_000_000_000) {
+        const shape_i = (shape_num - 1) % shapes.len;
         const new_shape_x = if (cmds[cmd_i] == '<') shape_x -| 1 else shape_x + 1;
         cmd_i = (cmd_i + 1) % cmds.len;
-        if (new_shape_x != shape_x and shapeDo(&grid, floor_y, shape_i, new_shape_x, shape_y, .validateX).is_valid)
+        if (new_shape_x != shape_x and try shapeDo(&grid, &max_ys, shape_i, new_shape_x, shape_y, .validateX))
             shape_x = new_shape_x;
-        if (!shapeDo(&grid, floor_y, shape_i, shape_x, shape_y - 1, .validateY).is_valid) {
-            max_y = @max(max_y, shapeDo(&grid, floor_y, shape_i, shape_x, shape_y, .rest).max_y);
-            // If a new 7-block-wide floor is formed by this piece, blocks under the floor are inaccessible and can be forgotten.
-            // The pattern may also be repeating if we're processing the same part of the input as a previous time a floor was formed.
-            var rev_it = std.mem.reverseIterator(grid[shape_y - 1 - floor_y .. shape_y - 1 - floor_y + 4]);
-            while (rev_it.next()) |row| {
-                if (!std.mem.allEqual(bool, &row, true)) continue;
-                const new_floor_y = shape_y + rev_it.index;
-                std.mem.copy([7]bool, &grid, grid[new_floor_y - floor_y .. max_y - floor_y]);
-                std.mem.set([7]bool, grid[max_y - new_floor_y .. max_y - floor_y], .{false} ** 7);
-                floor_y = new_floor_y;
-                if (floor_y == max_y) { // Easy to detect a repeating floor with no blocks above it.
-                    if (repeat_start == null) {
-                        repeat_start = .{ .cmd_i = cmd_i, .shape_i = shape_i, .max_y = max_y };
-                    } else if (shape_i >= 2022 and repeat_start.?.cmd_i == cmd_i) { // Part of grid is repeating now; skip ahead.
-                        const shape_count = shape_i - repeat_start.?.shape_i;
-                        const mul = (1_000_000_000_000 - 1 - shape_i) / shape_count;
-                        shape_i += shape_count * mul;
-                        max_y += (max_y - repeat_start.?.max_y) * mul;
-                        floor_y = max_y;
-                    }
-                }
-                break;
-            }
-            shape_i += 1;
+        if (!try shapeDo(&grid, &max_ys, shape_i, shape_x, shape_y - 1, .validateY)) {
+            const shape_top_y = shape_y + shape_heights[shape_i] - 1;
+            var max_y = std.mem.max(usize, &max_ys);
+            while (max_y < shape_top_y) : (max_y += 1) // Scroll the grid if necessary.
+                if (max_y >= grid.len) std.mem.set(bool, &grid[(max_y - grid.len) % grid.len], false);
+            _ = try shapeDo(&grid, &max_ys, shape_i, shape_x, shape_y, .rest);
+            if (shape_num == 2022) try stdout.print("Day17 (comptime parsing): P1: {}", .{max_y});
+            var y_diffs: [7]usize = undefined;
+            for (y_diffs) |*diff, x| diff.* = max_y - max_ys[x];
+            const seen = try seen_map.getOrPut(.{ .cmd_i = cmd_i, .shape_i = shape_i, .y_diffs = y_diffs });
+            if (seen.found_existing and shape_num >= 2022) { // Skip ahead for P2.
+                const shape_count = shape_num - seen.value_ptr.shape_num;
+                const mul = (1_000_000_000_000 - shape_num - shape_num_skip) / shape_count;
+                shape_num_skip += shape_count * mul;
+                max_y_skip += (max_y - seen.value_ptr.max_y) * mul;
+            } else if (!seen.found_existing) seen.value_ptr.* = .{ .shape_num = shape_num, .max_y = max_y };
+            if (shape_num + shape_num_skip == 1_000_000_000_000) try stdout.print(", P2: {}\n", .{max_y + max_y_skip});
+            shape_num += 1;
             shape_x = 2;
             shape_y = max_y + 4;
-            if (shape_i == 2022) try stdout.print("Day17 (comptime parsing): P1: {}", .{max_y});
         } else shape_y -= 1;
     }
-    try stdout.print(", P2: {}\n", .{max_y});
 }
