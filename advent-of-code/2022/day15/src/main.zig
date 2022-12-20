@@ -8,7 +8,7 @@ const parsed_input = blk: {
     while (line_it.next()) |_| sensor_count += 1;
     var sensors: [sensor_count]struct { sx: i32, sy: i32, bx: i32, by: i32 } = undefined;
     var p1_bxs_on_y = std.BoundedArray(i32, sensor_count).init(0) catch unreachable;
-    line_it = std.mem.tokenize(u8, input, std.cstr.line_sep);
+    line_it.reset();
     for (sensors) |*sensor| {
         const line = line_it.next().?;
         var start_i: usize = 0;

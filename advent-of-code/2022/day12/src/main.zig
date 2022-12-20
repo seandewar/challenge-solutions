@@ -8,7 +8,7 @@ const elevations = blk: {
     var h: u8 = 0;
     while (line_it.next()) |_| h += 1;
     var grid: [h]*const [w]u8 = undefined;
-    line_it = std.mem.tokenize(u8, input, std.cstr.line_sep);
+    line_it.reset();
     for (grid) |*row| row.* = line_it.next().?[0..];
     break :blk .{ .grid = grid, .w = w, .h = h };
 };

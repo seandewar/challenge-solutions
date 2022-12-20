@@ -8,7 +8,7 @@ const parsed_input = blk: {
     while (line_it.next()) |_| valve_count += 1;
     var valves: [valve_count]struct { name: []const u8, flow_rate: u8, to_is: []usize } = undefined;
     var start_i: u8 = undefined;
-    line_it = std.mem.tokenize(u8, input, std.cstr.line_sep);
+    line_it.reset();
     for (valves) |*valve, valve_i| {
         const line = line_it.next().?;
         const flow_rate_str = line[23..std.mem.indexOfScalarPos(u8, line, 24, ';').?];
@@ -19,7 +19,7 @@ const parsed_input = blk: {
         };
         if (std.mem.eql(u8, valve.name, "AA")) start_i = valve_i;
     }
-    line_it = std.mem.tokenize(u8, input, std.cstr.line_sep);
+    line_it.reset();
     for (valves) |*valve| {
         var to_is = std.BoundedArray(usize, valve_count).init(0) catch unreachable;
         var to_it = std.mem.split(u8, line_it.next().?, ", ");
