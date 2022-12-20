@@ -25,7 +25,7 @@ const parsed = blk: {
     }
     const x_bound = [_]u16{ 501 - y_floor, 499 + y_floor };
     var grid = std.mem.zeroes([y_floor][1 + x_bound[1] - x_bound[0]]bool);
-    line_it = std.mem.tokenize(u8, input, std.cstr.line_sep);
+    line_it.reset();
     while (line_it.next()) |line| {
         var pos_it: ?std.mem.SplitIterator(u8) = null;
         var pos = pathParseNext(line, &pos_it).?;
