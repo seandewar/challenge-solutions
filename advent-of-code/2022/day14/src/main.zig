@@ -4,7 +4,7 @@ const Position = struct { x: u16, y: u16 };
 fn pathParseNext(line: []const u8, it: *?std.mem.SplitIterator(u8)) ?Position {
     if (it.* == null) it.* = std.mem.split(u8, line, " -> ");
     const pos = it.*.?.next() orelse return null;
-    const comma_i = std.mem.indexOfScalar(u8, pos, ',') orelse unreachable;
+    const comma_i = std.mem.indexOfScalar(u8, pos, ',').?;
     return Position{
         .x = std.fmt.parseInt(u16, pos[0..comma_i], 10) catch unreachable,
         .y = std.fmt.parseInt(u16, pos[comma_i + 1 ..], 10) catch unreachable,
