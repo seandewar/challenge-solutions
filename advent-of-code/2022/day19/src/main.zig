@@ -1,10 +1,6 @@
 const std = @import("std");
 const Resources = struct { ore: u32 = 0, clay: u32 = 0, obsidian: u32 = 0, geode: u32 = 0 };
-const Blueprint = struct {
-    bot_ore_costs: Resources,
-    obsidian_bot_clay_cost: u32,
-    geode_bot_obsidian_cost: u32,
-};
+const Blueprint = struct { bot_ore_costs: Resources, obsidian_bot_clay_cost: u32, geode_bot_obsidian_cost: u32 };
 const parsed_blueprints = blk: {
     @setEvalBranchQuota(100_000);
     const input = @embedFile("input");
@@ -54,8 +50,7 @@ fn computeMaxGeodes(blueprint: Blueprint, rem_time: u32, resources: *Resources, 
                 if (extra_resource) |resource| (std.math.divCeil(u32, resource.cost -| resource.count.*, @field(bots, info.extra_cost.?)) catch unreachable) else 0,
             );
             if (rem_time > build_time) {
-                inline for (@typeInfo(Resources).Struct.fields) |field|
-                    @field(resources, field.name) += build_time * @field(bots, field.name);
+                inline for (@typeInfo(Resources).Struct.fields) |field| @field(resources, field.name) += build_time * @field(bots, field.name);
                 resources.ore -= ore_cost;
                 if (extra_resource) |resource| resource.count.* -= resource.cost;
                 @field(bots, info.bot) += 1;
@@ -75,5 +70,12 @@ pub fn main() !void {
         p1 += (blueprint_i + 1) * computeMaxGeodes(blueprint, 24 -| resources.ore, &resources, &bots);
     }
     const stdout = std.io.getStdOut().writer();
-    try stdout.print("Day19 (comptime parsing): P1: {}\n", .{p1});
+    try stdout.print("Day19 (comptime parsing): P1: {}", .{p1});
+    var p2: usize = 1;
+    for (parsed_blueprints[0..3]) |blueprint| {
+        var resources = Resources{ .ore = @min(blueprint.bot_ore_costs.ore, blueprint.bot_ore_costs.clay) };
+        var bots = Resources{ .ore = 1 };
+        p2 *= computeMaxGeodes(blueprint, 32 -| resources.ore, &resources, &bots);
+    }
+    try stdout.print(", P2: {}\n", .{p2});
 }
