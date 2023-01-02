@@ -1,53 +1,42 @@
 const std = @import("std");
-
-const Position = struct {
-    x: i32 = 0,
-    y: i32 = 0,
-};
-fn parseCommand(cmd: []const u8) struct { dir: Position, steps: u8 } {
-    const dir: Position = switch (cmd[0]) {
-        'R' => .{ .x = 1 },
-        'L' => .{ .x = -1 },
-        'U' => .{ .y = 1 },
-        'D' => .{ .y = -1 },
+fn parseCommand(cmd: []const u8) struct { dir: @Vector(2, i32), steps: u8 } {
+    const dir: @Vector(2, i32) = switch (cmd[0]) {
+        'R' => .{ 1, 0 },
+        'L' => .{ -1, 0 },
+        'U' => .{ 0, 1 },
+        'D' => .{ 0, -1 },
         else => unreachable,
     };
     const steps = std.fmt.parseInt(u8, cmd[2..], 10) catch unreachable;
     return .{ .dir = dir, .steps = steps };
 }
-
 const answers = blk: {
     @setEvalBranchQuota(1_000_000);
     const input = @embedFile("input");
-    var rope_pos = [_]Position{.{}} ** 10;
-    var min_pos = Position{};
-    var max_pos = Position{};
+    var rope_pos = [_]@Vector(2, i32){.{ 0, 0 }} ** 10;
+    var min_pos = @Vector(2, i32){ 0, 0 };
+    var max_pos = @Vector(2, i32){ 0, 0 };
     var line_it = std.mem.tokenize(u8, input, std.cstr.line_sep);
     while (line_it.next()) |line| { // Compute grid bounds for marking visited tail positions.
         const cmd = parseCommand(line);
-        rope_pos[0].x += cmd.dir.x * cmd.steps;
-        rope_pos[0].y += cmd.dir.y * cmd.steps;
-        min_pos.x = @min(min_pos.x, rope_pos[0].x);
-        min_pos.y = @min(min_pos.y, rope_pos[0].y);
-        max_pos.x = @max(max_pos.x, rope_pos[0].x);
-        max_pos.y = @max(max_pos.y, rope_pos[0].y);
+        rope_pos[0] += cmd.dir * @splat(2, @as(i32, cmd.steps));
+        min_pos = @min(min_pos, rope_pos[0]);
+        max_pos = @max(max_pos, rope_pos[0]);
     }
-    rope_pos[0] = .{};
-    var tail_visit_grid = std.mem.zeroes([1 + max_pos.y - min_pos.y][1 + max_pos.x - min_pos.x]u2);
-    tail_visit_grid[-min_pos.y][-min_pos.x] = 0b11;
+    rope_pos[0] = .{ 0, 0 };
+    var tail_visit_grid = std.mem.zeroes([1 + max_pos[1] - min_pos[1]][1 + max_pos[0] - min_pos[0]]u2);
+    tail_visit_grid[-min_pos[1]][-min_pos[0]] = 0b11;
     line_it.reset();
     while (line_it.next()) |line| {
         var cmd = parseCommand(line);
         while (cmd.steps != 0) : (cmd.steps -= 1) {
-            rope_pos[0].x += cmd.dir.x; // Move head part (H).
-            rope_pos[0].y += cmd.dir.y;
+            rope_pos[0] += cmd.dir; // Move head part (H).
             for (rope_pos[1..]) |*pos, tail_i| { // Move tails parts (1-9).
-                const delta = Position{ .x = rope_pos[tail_i].x - pos.x, .y = rope_pos[tail_i].y - pos.y };
-                if (std.math.absCast(delta.x) < 2 and std.math.absCast(delta.y) < 2) break; // Adjacent to previous part - no movement.
-                pos.x += std.math.clamp(delta.x, -1, 1);
-                pos.y += std.math.clamp(delta.y, -1, 1);
-                if (tail_i == 0) tail_visit_grid[pos.y - min_pos.y][pos.x - min_pos.x] |= 0b01; // First part of tail (1) visited.
-                if (tail_i == 8) tail_visit_grid[pos.y - min_pos.y][pos.x - min_pos.x] |= 0b10; // Last part of tail (9) visited.
+                const delta = rope_pos[tail_i] - pos.*;
+                if (std.math.absCast(delta[0]) < 2 and std.math.absCast(delta[1]) < 2) break; // Adjacent to previous part - no movement.
+                pos.* += @Vector(2, i32){ std.math.clamp(delta[0], -1, 1), std.math.clamp(delta[1], -1, 1) };
+                if (tail_i == 0) tail_visit_grid[pos.*[1] - min_pos[1]][pos.*[0] - min_pos[0]] |= 0b01; // First part of tail (1) visited.
+                if (tail_i == 8) tail_visit_grid[pos.*[1] - min_pos[1]][pos.*[0] - min_pos[0]] |= 0b10; // Last part of tail (9) visited.
             }
         }
     }
