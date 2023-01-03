@@ -34,7 +34,7 @@ fn shapeDo(grid: [][7]bool, max_ys: *[7]usize, shape_i: usize, shape_x: u8, shap
         switch (action) {
             .validateX => if (x >= 7 or (y <= max_y and grid[(y - 1) % grid.len][x])) return false,
             .validateY => if (y <= max_y -| grid.len or (y <= max_y and grid[(y - 1) % grid.len][x]))
-                return if (y > 0 and y <= max_y -| grid.len) error.gridTooSmall else false,
+                return if (y > 0 and y <= max_y -| grid.len) error.GridTooSmall else false,
             .rest => {
                 max_ys.*[x] = @max(max_ys.*[x], y);
                 grid[(y - 1) % grid.len][x] = true;
