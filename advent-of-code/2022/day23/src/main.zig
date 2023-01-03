@@ -33,7 +33,7 @@ pub fn main() !void {
                 rect_bounds[1] = @max(rect_bounds[1], elf_pos);
             }
             const p1 = @intCast(usize, @reduce(.Mul, rect_bounds[1] + @splat(2, @as(i32, 1)) - rect_bounds[0])) - elves.len;
-            try stdout.print("Day23 (comptime parsing): P1: {}", .{p1});
+            try stdout.print("Day23 (comptime parsing, no allocations): P1: {}", .{p1});
         }
         moves.len = 0;
         std.sort.sort(@Vector(2, i32), &elves, {}, struct {
@@ -57,12 +57,13 @@ pub fn main() !void {
                                 return .eq;
                             } else return .gt;
                         }
-                    }.compareFn) != null) {
-                        has_adj_elf = true;
-                        continue :next_move_dir;
-                    }
+                    }.compareFn) == null) continue;
+                    has_adj_elf = true;
+                    if (next_move == null) continue :next_move_dir else break :next_move_dir;
                 }
-                if (next_move == null) next_move = .{ .elf_i = elf_i, .to = elf_pos + info.move };
+                if (next_move != null) continue;
+                next_move = .{ .elf_i = elf_i, .to = elf_pos + info.move };
+                if (has_adj_elf) break;
             }
             if (has_adj_elf and next_move != null) moves.append(next_move.?) catch unreachable;
         }
