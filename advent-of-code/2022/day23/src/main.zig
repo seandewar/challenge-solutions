@@ -13,7 +13,7 @@ const parsed_elves = blk: {
     break :blk elves.buffer;
 };
 
-fn computeAnswer() usize {
+pub fn main() !void {
     const possible_moves = [_]struct { checks: [3]@Vector(2, i32), move: @Vector(2, i32) }{
         .{ .checks = .{ .{ -1, -1 }, .{ 0, -1 }, .{ 1, -1 } }, .move = .{ 0, -1 } }, // N
         .{ .checks = .{ .{ -1, 1 }, .{ 0, 1 }, .{ 1, 1 } }, .move = .{ 0, 1 } }, // S
@@ -23,8 +23,18 @@ fn computeAnswer() usize {
     const Move = struct { elf_i: usize, to: @Vector(2, i32) };
     var elves = parsed_elves;
     var moves = std.BoundedArray(Move, elves.len).init(0) catch unreachable;
+    const stdout = std.io.getStdOut().writer();
     var round: u32 = 0;
-    while (round < 10) : (round += 1) {
+    while (round == 0 or moves.len > 0) : (round += 1) {
+        if (round == 10) { // Assumes computing part 2 takes more than 10 rounds.
+            var rect_bounds = [_]@Vector(2, i32){elves[0]} ** 2;
+            for (elves[1..]) |elf_pos| {
+                rect_bounds[0] = @min(rect_bounds[0], elf_pos);
+                rect_bounds[1] = @max(rect_bounds[1], elf_pos);
+            }
+            const p1 = @intCast(usize, @reduce(.Mul, rect_bounds[1] + @splat(2, @as(i32, 1)) - rect_bounds[0])) - elves.len;
+            try stdout.print("Day23 (comptime parsing): P1: {}", .{p1});
+        }
         moves.len = 0;
         std.sort.sort(@Vector(2, i32), &elves, {}, struct {
             fn lessThan(context: void, lhs: @Vector(2, i32), rhs: @Vector(2, i32)) bool {
@@ -56,7 +66,6 @@ fn computeAnswer() usize {
             }
             if (has_adj_elf and next_move != null) moves.append(next_move.?) catch unreachable;
         }
-        if (moves.len == 0) break; // No more moves possible.
         std.sort.sort(Move, moves.slice(), {}, struct {
             fn lessThan(context: void, lhs: Move, rhs: Move) bool {
                 _ = context;
@@ -69,14 +78,5 @@ fn computeAnswer() usize {
             elves[move.elf_i] = move.to;
         }
     }
-    var rect_bounds = [_]@Vector(2, i32){elves[0]} ** 2;
-    for (elves[1..]) |elf_pos| {
-        rect_bounds[0] = @min(rect_bounds[0], elf_pos);
-        rect_bounds[1] = @max(rect_bounds[1], elf_pos);
-    }
-    return @intCast(usize, @reduce(.Mul, rect_bounds[1] + @splat(2, @as(i32, 1)) - rect_bounds[0])) - elves.len;
-}
-pub fn main() !void {
-    const stdout = std.io.getStdOut().writer();
-    try stdout.print("Day23 (comptime parsing): P1: {}, P2: {}\n", .{ computeAnswer(), 0 });
+    try stdout.print(", P2: {}\n", .{round});
 }
