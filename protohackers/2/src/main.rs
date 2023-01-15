@@ -11,7 +11,6 @@ use tokio::{
 
 const MAX_CONNECTIONS: usize = 32;
 
-#[allow(unreachable_code)]
 #[tokio::main]
 async fn main() -> io::Result<()> {
     let listener = TcpListener::bind((Ipv4Addr::UNSPECIFIED, 1234)).await?;
@@ -51,8 +50,6 @@ async fn main() -> io::Result<()> {
             *connection_count.lock().unwrap() -= 1;
         });
     }
-
-    Ok(())
 }
 
 async fn handle_connection((mut stream, addr): (TcpStream, SocketAddr)) -> io::Result<()> {
