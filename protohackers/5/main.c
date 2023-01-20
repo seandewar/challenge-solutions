@@ -41,16 +41,16 @@ struct client {
     char addr_s[ADDR_STRBUF_LEN];
 };
 
-static void *handle_client(void *);
-
 // I just let the OS close sockets and such when using this.
-#define EXIT_ON_ERR(ret, msg)   \
-    do {                        \
-        if ((ret) == -1) {      \
-            perror((msg));      \
-            exit(EXIT_FAILURE); \
-        }                       \
-    } while (false)
+static void exit_on_err(const int ret, const char *const msg)
+{
+    if (ret == -1) {
+        perror(msg);
+        exit(EXIT_FAILURE);
+    }
+}
+
+static void *handle_client(void *);
 
 int main(void)
 {
@@ -72,7 +72,7 @@ int main(void)
            upstream_addr_s);
 
     const int listen_sock = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
-    EXIT_ON_ERR(listen_sock, "socket (listen)");
+    exit_on_err(listen_sock, "socket (listen)");
 
     struct sockaddr_in listen_addr = {
         .sin_family = AF_INET,
@@ -80,10 +80,10 @@ int main(void)
     };
     const uint32_t in_addr_any = htonl(INADDR_ANY);
     memcpy(&listen_addr.sin_addr, &in_addr_any, sizeof listen_addr.sin_addr);
-    EXIT_ON_ERR(bind(listen_sock, (const struct sockaddr *)&listen_addr,
+    exit_on_err(bind(listen_sock, (const struct sockaddr *)&listen_addr,
                      sizeof listen_addr),
                 "bind");
-    EXIT_ON_ERR(listen(listen_sock, MAX_CLIENTS), "listen");
+    exit_on_err(listen(listen_sock, MAX_CLIENTS), "listen");
     printf("Listening on port %d...\n", LISTEN_PORT);
 
     struct client clients[MAX_CLIENTS];
@@ -131,7 +131,7 @@ int main(void)
 
         struct sockaddr_in upstream_localaddr;
         socklen_t upstream_sockname_len = sizeof upstream_localaddr;
-        EXIT_ON_ERR(getsockname(client.upstream_sock,
+        exit_on_err(getsockname(client.upstream_sock,
                                 (struct sockaddr *)&upstream_localaddr,
                                 &upstream_sockname_len),
                     "getsockname");
@@ -153,9 +153,9 @@ int main(void)
 
     fail:
         if (client.upstream_sock != -1) {
-            EXIT_ON_ERR(close(client.upstream_sock), "close");
+            exit_on_err(close(client.upstream_sock), "close");
         }
-        EXIT_ON_ERR(close(client.sock), "close");
+        exit_on_err(close(client.sock), "close");
         if (client_i != MAX_CLIENTS) {
             clients[client_i].sock = -1;
         }
@@ -251,9 +251,9 @@ static bool handle_bridge(const int src_sock, const int dst_sock,
         for (const char *p = line_buf; p != line_buf_end; ++p) {
             if (*p == '\n') {
                 printf("\\n");
-                continue;
+            } else {
+                putchar(isprint(*p) ? *p : '?');
             }
-            putchar(isprint(*p) ? *p : '?');
         }
         puts("\"");
 
@@ -300,14 +300,14 @@ static void *handle_client(void *const arg)
         if (poll(poll_fds, 2, -1) == -1) {
             fprintf(stderr, "Dropping %s: poll() failed: %s\n", client->addr_s,
                     strerror(errno));
-            goto end;
+            break;
         }
 
         // sock
         if (poll_fds[0].revents != 0
             && !handle_bridge(client->sock, client->upstream_sock, read_buf,
                               &read_buf_len, client->addr_s, "client")) {
-            goto end;
+            break;
         }
 
         // upstream_sock
@@ -315,13 +315,12 @@ static void *handle_client(void *const arg)
             && !handle_bridge(client->upstream_sock, client->sock,
                               read_upstream_buf, &read_upstream_buf_len,
                               client->addr_s, "upstream")) {
-            goto end;
+            break;
         }
     }
 
-end:
-    EXIT_ON_ERR(close(client->upstream_sock), "close");
-    EXIT_ON_ERR(close(client->sock), "close");
+    exit_on_err(close(client->upstream_sock), "close");
+    exit_on_err(close(client->sock), "close");
     client->sock = -1;
     return NULL;
 }
