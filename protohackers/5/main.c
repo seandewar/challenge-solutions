@@ -162,8 +162,6 @@ int main(void)
     }
 }
 
-#define TONY_BOGUSCOIN_ADDR "7YWHMfk9JZe0LM0g1ZauHuiSxhI"
-
 static const char *next_boguscoin_addr(const char *const line_start,
                                        const char *const search_start,
                                        const char **const search_end)
@@ -190,6 +188,7 @@ static const char *next_boguscoin_addr(const char *const line_start,
 }
 
 #define READ_BUF_LEN 1024
+#define TONY_BOGUSCOIN_ADDR "7YWHMfk9JZe0LM0g1ZauHuiSxhI"
 
 static bool handle_bridge(const int src_sock, const int dst_sock,
                           char read_buf[static READ_BUF_LEN],
