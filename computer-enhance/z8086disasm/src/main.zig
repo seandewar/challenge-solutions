@@ -19,19 +19,19 @@ pub fn main() !u8 {
             return 1;
         };
         defer file.close();
+        var file_buffered = std.io.bufferedReader(file.reader());
 
         if (file_i > 0) try stdout.writeByte('\n');
         try stdout.print("; File: {s}\n", .{file_path});
-        var file_reader_buffered = std.io.bufferedReader(file.reader());
-        disassemble(file_reader_buffered.reader(), stdout) catch |err| {
+        disassemble(file_buffered.reader(), &stdout_buffered) catch |err| {
             log.err("Failed to disassemble file \"{s}\": {!}", .{ file_path, err });
             return 1;
         };
     }
 
     if (file_i == 0) {
-        var stdin_reader_buffered = std.io.bufferedReader(std.io.getStdIn().reader());
-        disassemble(stdin_reader_buffered.reader(), stdout) catch |err| {
+        var stdin_buffered = std.io.bufferedReader(std.io.getStdIn().reader());
+        disassemble(stdin_buffered.reader(), &stdout_buffered) catch |err| {
             log.err("Failed to disassemble from standard input: {!}", .{err});
             return 1;
         };
@@ -39,7 +39,9 @@ pub fn main() !u8 {
     return 0;
 }
 
-fn disassemble(reader: anytype, writer: anytype) !void {
+fn disassemble(reader: anytype, buffered_writer: anytype) !void {
+    defer buffered_writer.flush() catch |err| log.err("Failed to flush writer: {!}", .{err});
+    const writer = buffered_writer.writer();
     try writer.writeAll("bits 16\n");
 
     while (true) {
@@ -48,8 +50,7 @@ fn disassemble(reader: anytype, writer: anytype) !void {
             else => return err,
         };
 
-        // May need to read-ahead to identify these instructions.
-        var mod_spec_instr_info: ModSpecialInstrInfo = undefined;
+        var mod_spec_info: ModSpecialInstrInfo = undefined; // May need to read-ahead to identify these.
         const mnemonic = switch (first) {
             0x00...0x05 => "add",
             0x06, 0x0e, 0x16, 0x1e, 0x50...0x57 => "push",
@@ -73,8 +74,8 @@ fn disassemble(reader: anytype, writer: anytype) !void {
             0x48...0x4f => "dec",
 
             0xd0...0xd3 => blk: {
-                mod_spec_instr_info = try readModSpecialInstrInfo(reader);
-                break :blk switch (mod_spec_instr_info.op) {
+                mod_spec_info = try readModSpecialInstrInfo(reader);
+                break :blk switch (mod_spec_info.op) {
                     0 => "rol",
                     1 => "ror",
                     2 => "rcl",
@@ -82,15 +83,13 @@ fn disassemble(reader: anytype, writer: anytype) !void {
                     4 => "sal",
                     5 => "shr",
                     7 => "sar",
-                    else => return unknownModSpecialInstr(first, mod_spec_instr_info),
+                    else => return unknownInstr(buffered_writer, first, mod_spec_info),
                 };
             },
 
             0xd4...0xd5 => blk: {
-                mod_spec_instr_info = try readModSpecialInstrInfo(reader);
-                if (mod_spec_instr_info.byte != 0b1010) {
-                    return unknownModSpecialInstr(first, mod_spec_instr_info);
-                }
+                mod_spec_info = try readModSpecialInstrInfo(reader);
+                if (mod_spec_info.byte != 0b1010) return unknownInstr(buffered_writer, first, mod_spec_info);
                 break :blk if (first == 0xd4) "aam" else "aad";
             },
 
@@ -112,8 +111,8 @@ fn disassemble(reader: anytype, writer: anytype) !void {
             0x7f => "jnle",
 
             0x80...0x83 => blk: {
-                mod_spec_instr_info = try readModSpecialInstrInfo(reader);
-                break :blk switch (mod_spec_instr_info.op) {
+                mod_spec_info = try readModSpecialInstrInfo(reader);
+                break :blk switch (mod_spec_info.op) {
                     0 => "add",
                     1 => "or",
                     2 => "adc",
@@ -131,8 +130,8 @@ fn disassemble(reader: anytype, writer: anytype) !void {
             0x8d => "lea",
 
             0x8f => blk: {
-                mod_spec_instr_info = try readModSpecialInstrInfo(reader);
-                if (mod_spec_instr_info.op != 0) return unknownModSpecialInstr(first, mod_spec_instr_info);
+                mod_spec_info = try readModSpecialInstrInfo(reader);
+                if (mod_spec_info.op != 0) return unknownInstr(buffered_writer, first, mod_spec_info);
                 break :blk "pop";
             },
 
@@ -172,8 +171,8 @@ fn disassemble(reader: anytype, writer: anytype) !void {
             0xf5 => "cmc",
 
             0xf6...0xf7 => blk: {
-                mod_spec_instr_info = try readModSpecialInstrInfo(reader);
-                break :blk switch (mod_spec_instr_info.op) {
+                mod_spec_info = try readModSpecialInstrInfo(reader);
+                break :blk switch (mod_spec_info.op) {
                     0 => "test",
                     2 => "not",
                     3 => "neg",
@@ -181,7 +180,7 @@ fn disassemble(reader: anytype, writer: anytype) !void {
                     5 => "imul",
                     6 => "div",
                     7 => "idiv",
-                    else => return unknownModSpecialInstr(first, mod_spec_instr_info),
+                    else => return unknownInstr(buffered_writer, first, mod_spec_info),
                 };
             },
 
@@ -193,30 +192,27 @@ fn disassemble(reader: anytype, writer: anytype) !void {
             0xfd => "std",
 
             0xfe => blk: {
-                mod_spec_instr_info = try readModSpecialInstrInfo(reader);
-                break :blk switch (mod_spec_instr_info.op) {
+                mod_spec_info = try readModSpecialInstrInfo(reader);
+                break :blk switch (mod_spec_info.op) {
                     0 => "inc",
                     1 => "dec",
-                    else => return unknownModSpecialInstr(first, mod_spec_instr_info),
+                    else => return unknownInstr(buffered_writer, first, mod_spec_info),
                 };
             },
 
             0xff => blk: {
-                mod_spec_instr_info = try readModSpecialInstrInfo(reader);
-                break :blk switch (mod_spec_instr_info.op) {
+                mod_spec_info = try readModSpecialInstrInfo(reader);
+                break :blk switch (mod_spec_info.op) {
                     0 => "inc",
                     1 => "dec",
                     2, 3 => "call",
                     4, 5 => "jmp",
                     6 => "push",
-                    else => return unknownModSpecialInstr(first, mod_spec_instr_info),
+                    else => return unknownInstr(buffered_writer, first, mod_spec_info),
                 };
             },
 
-            else => {
-                log.err("Unknown instruction: 0x{x:0>2}", .{first});
-                return error.UnknownInstr;
-            },
+            else => return unknownInstr(buffered_writer, first, null),
         };
         try writer.writeAll(mnemonic);
 
@@ -264,7 +260,7 @@ fn disassemble(reader: anytype, writer: anytype) !void {
             0xd0...0xd3,
             0xf6...0xf7,
             0xfe...0xff,
-            => try handleModSpecialInstr(reader, writer, first, mod_spec_instr_info),
+            => try handleModSpecialInstr(reader, writer, first, mod_spec_info),
 
             0x91...0x97 => try writer.print(" ax, {s}", .{getGpRegisterName(@intCast(u3, first & 7), true)}),
 
@@ -306,8 +302,13 @@ fn readModSpecialInstrInfo(reader: anytype) !ModSpecialInstrInfo {
     return .{ .byte = byte, .op = @intCast(u3, (byte >> 3) & 0b111) };
 }
 
-fn unknownModSpecialInstr(first: u8, info: ModSpecialInstrInfo) error{UnknownInstr} {
-    log.err("Unknown instruction: 0x{x:0>2} 0x{x:0>2}", .{ first, info.byte });
+fn unknownInstr(buffered_writer: anytype, first: u8, mod_spec_info: ?ModSpecialInstrInfo) error{UnknownInstr} {
+    buffered_writer.flush() catch |err| log.err("Failed to flush writer: {!}", .{err});
+    if (mod_spec_info) |info| {
+        log.err("Unknown instruction: 0x{x:0>2} 0x{x:0>2}", .{ first, info.byte });
+    } else {
+        log.err("Unknown instruction: 0x{x:0>2}", .{first});
+    }
     return error.UnknownInstr;
 }
 
@@ -424,10 +425,7 @@ fn handleDataInstr(reader: anytype, writer: anytype, first: u8) !void {
 }
 
 fn handleIpIncrInstr(reader: anytype, writer: anytype, first: u8) !void {
-    const w = switch (first) {
-        0xe8...0xe9 => true,
-        else => false,
-    };
+    const w = first == 0xe8 or first == 0xe9;
     const off = if (w) try reader.readIntLittle(i16) else try reader.readByteSigned();
     try writer.print(" ${s}0x{x}", .{ if (off >= 0) "+" else "-", std.math.absCast(off) });
 }
