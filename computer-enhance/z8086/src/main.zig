@@ -1,6 +1,10 @@
 const std = @import("std");
 const log = std.log;
 
+test {
+    _ = @import("decode.zig");
+}
+
 pub fn main() !u8 {
     var stdout_buffered = std.io.bufferedWriter(std.io.getStdOut().writer());
     defer stdout_buffered.flush() catch |err| log.err("Failed to flush stdout: {!}", .{err});
