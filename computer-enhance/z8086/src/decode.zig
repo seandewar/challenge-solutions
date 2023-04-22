@@ -731,7 +731,7 @@ test "40: challenge movs" {
     try testExpectAddrInstr(.mov, .{ .reg = .ax }, .{ .addr = 2555 }, try decodeNext(reader, null));
     try testExpectAddrInstr(.mov, .{ .reg = .ax }, .{ .addr = 16 }, try decodeNext(reader, null));
 
-    // Accumulator-to-memory test
+    // Accumulator-to-memory test.
     try testExpectAddrInstr(.mov, .{ .addr = 2554 }, .{ .reg = .ax }, try decodeNext(reader, null));
     try testExpectAddrInstr(.mov, .{ .addr = 15 }, .{ .reg = .ax }, try decodeNext(reader, null));
 
@@ -828,6 +828,190 @@ test "41: add sub cmp jnz" {
             (try decodeNext(reader, null)).?,
         );
     }
+
+    try testing.expectEqual(@as(?Instruction, null), try decodeNext(reader, null));
+}
+
+test "42: completionist decode" {
+    var stream = std.io.fixedBufferStream(
+        "\x89\xde\x88\xc6\xb1\x0c\xb5\xf4\xb9\x0c\x00\xb9\xf4\xff\xba\x6c" ++
+            "\x0f\xba\x94\xf0\x8a\x00\x8b\x1b\x8b\x56\x00\x8a\x60\x04\x8a\x80" ++
+            "\x87\x13\x89\x09\x88\x0a\x88\x6e\x00\x8b\x41\xdb\x89\x8c\xd4\xfe" ++
+            "\x8b\x57\xe0\xc6\x03\x07\xc7\x85\x85\x03\x5b\x01\x8b\x2e\x05\x00" ++
+            "\x8b\x1e\x82\x0d\xa1\xfb\x09\xa1\x10\x00\xa3\xfa\x09\xa3\x0f\x00" ++
+            "\xff\x32\xff\x36\xb8\x0b\xff\x71\xe2\x51\x50\x52\x0e\x8f\x02\x8f" ++
+            "\x06\x03\x00\x8f\x81\x48\xf4\x5c\x5f\x5e\x1f\x87\x86\x18\xfc\x87" ++
+            "\x6f\x32\x90\x92\x94\x96\x97\x87\xca\x87\xf1\x86\xcc\xe4\xc8\xec" ++
+            "\xed\xe7\x2c\xee\xd7\x8d\x81\x8c\x05\x8d\x5e\xce\x8d\xa6\x15\xfc" ++
+            "\x8d\x78\xf9\xc5\x81\x8c\x05\xc5\x5e\xce\xc5\xa6\x15\xfc\xc5\x78" ++
+            "\xf9\xc4\x81\x8c\x05\xc4\x5e\xce\xc4\xa6\x15\xfc\xc4\x78\xf9\x9f" ++
+            "\x9e\x9c\x9d\x03\x4e\x00\x03\x10\x00\xa3\x88\x13\x00\x07\x81\xc4" ++
+            "\x88\x01\x83\xc6\x05\x05\xe8\x03\x80\xc4\x1e\x04\x09\x01\xd9\x00" ++
+            "\xc5\x13\x4e\x00\x13\x10\x10\xa3\x88\x13\x10\x07\x81\xd4\x88\x01" ++
+            "\x83\xd6\x05\x15\xe8\x03\x80\xd4\x1e\x14\x09\x11\xd9\x10\xc5\x40" ++
+            "\x41\xfe\xc6\xfe\xc0\xfe\xc4\x44\x47\xfe\x86\xea\x03\xff\x47\x27" ++
+            "\xfe\x40\x05\xff\x83\xc4\xd8\xff\x06\x85\x24\xfe\x46\x00\x37\x27" ++
+            "\x2b\x4e\x00\x2b\x10\x28\xa3\x88\x13\x28\x07\x81\xec\x88\x01\x83" ++
+            "\xee\x05\x2d\xe8\x03\x80\xec\x1e\x2c\x09\x29\xd9\x28\xc5\x1b\x4e" ++
+            "\x00\x1b\x10\x18\xa3\x88\x13\x18\x07\x81\xdc\x88\x01\x83\xde\x05" ++
+            "\x1d\xe8\x03\x80\xdc\x1e\x1c\x09\x19\xd9\x18\xc5\x48\x49\xfe\xce" ++
+            "\xfe\xc8\xfe\xcc\x4c\x4f\xfe\x8e\xea\x03\xff\x4f\x27\xfe\x48\x05" ++
+            "\xff\x8b\xc4\xd8\xff\x0e\x85\x24\xfe\x4e\x00\xf7\xd8\xf7\xd9\xf6" ++
+            "\xde\xf6\xd8\xf6\xdc\xf7\xdc\xf7\xdf\xf6\x9e\xea\x03\xf7\x5f\x27" ++
+            "\xf6\x58\x05\xf7\x9b\xc4\xd8\xf7\x1e\x85\x24\xf6\x5e\x00\x39\xcb" ++
+            "\x3a\xb6\x86\x01\x39\x76\x02\x80\xfb\x14\x80\x3f\x22\x3d\x65\x5d" ++
+            "\x3f\x2f\xf6\xe0\xf7\xe1\xf7\x66\x00\xf6\xa1\xf4\x01\xf6\xed\xf7" ++
+            "\xea\xf6\x2f\xf7\x2e\x0b\x25\xd4\x0a\xf6\xf3\xf7\xf4\xf6\xb0\xae" ++
+            "\x0b\xf7\xb3\xe8\x03\xf7\xf8\xf7\xfe\xf6\x3a\xf7\xbf\xed\x01\xd5" ++
+            "\x0a\x98\x99\xf6\xd4\xf6\xd3\xf7\xd4\xf7\xd6\xf7\x56\x00\xf6\x96" ++
+            "\xb1\x26\xd0\xe4\xd1\xe8\xd1\xfb\xd1\xc1\xd0\xce\xd1\xd4\xd1\xdd" ++
+            "\xd1\x66\x05\xd0\xa8\x39\xff\xd0\xb9\xd4\xfe\xd1\x46\x00\xd1\x0e" ++
+            "\x4a\x13\xd0\x16\x03\x00\xd1\x1f\xd2\xe4\xd3\xe8\xd3\xfb\xd3\xc1" ++
+            "\xd2\xce\xd3\xd4\xd3\xdd\xd3\x66\x05\xd3\xa8\x39\xff\xd2\xb9\xd4" ++
+            "\xfe\xd2\x46\x00\xd2\x0e\x4a\x13\xd2\x16\x03\x00\xd3\x1f\x20\xe0" ++
+            "\x20\xcd\x21\xf5\x21\xe7\x24\x5d\x25\xa8\x4f\x20\x6a\x0a\x21\x91" ++
+            "\xe8\x03\x23\x5e\x00\x23\x0e\x20\x11\x80\x66\xd9\xef\x81\xa0\x14" ++
+            "\xef\x58\x28\x85\xcb\x84\xb6\x86\x01\x85\x76\x02\xf6\xc3\x14\xf6" ++
+            "\x07\x22\xa9\x65\x5d\x08\xe0\x08\xcd\x09\xf5\x09\xe7\x0c\x5d\x0d" ++
+            "\xa8\x4f\x08\x6a\x0a\x09\x91\xe8\x03\x0b\x5e\x00\x0b\x0e\x20\x11" ++
+            "\x80\x4e\xd9\xef\x81\x88\x14\xef\x58\x28\x30\xe0\x30\xcd\x31\xf5" ++
+            "\x31\xe7\x34\x5d\x35\xa8\x4f\x30\x6a\x0a\x31\x91\xe8\x03\x33\x5e" ++
+            "\x00\x33\x0e\x20\x11\x80\x76\xd9\xef\x81\xb0\x14\xef\x58\x28\xf3" ++
+            "\xa4\xf3\xa6\xf3\xae\xf3\xac\xf3\xa5\xf3\xa7\xf3\xaf\xf3\xad\xf3" ++
+            "\xaa\xf3\xab\xff\x16\x21\x99\xff\x56\x9c\xff\xd4\xff\xd0\xff\xe0" ++
+            "\xff\xe7\xff\x26\x0c\x00\xff\x26\x2b\x11\xc2\xf9\xff\xc2\xf4\x01" ++
+            "\xc3\x74\xfe\x7c\xfc\x7e\xfa\x72\xf8\x76\xf6\x7a\xf4\x70\xf2\x78" ++
+            "\xf0\x75\xee\x7d\xec\x7f\xea\x73\xe8\x77\xe6\x7b\xe4\x71\xe2\x79" ++
+            "\xe0\xe2\xde\xe1\xdc\xe0\xda\xe3\xd8\xcd\x0d\xcc\xce\xcf\xf8\xf5" ++
+            "\xf9\xfc\xfd\xfa\xfb\xf4\x9b\xf0\xf6\x96\xb1\x26\xf0\x86\x06\x64" ++
+            "\x00\x2e\x8a\x00\x3e\x8b\x1b\x26\x8b\x56\x00\x36\x8a\x60\x04\x36" ++
+            "\x20\x6a\x0a\x3e\x09\x91\xe8\x03\x26\x33\x5e\x00\x26\x3b\x0e\x20" ++
+            "\x11\x2e\xf6\x46\xd9\xef\x2e\x81\x98\x14\xef\x58\x28\xf0\x2e\xf6" ++
+            "\x96\xb1\x26\x9a\xc8\x01\x7b\x00\xea\x22\x00\x15\x03\x8c\x40\x3b" ++
+            "\xe9\xd9\x06\xe8\xb6\x2a\xca\x94\x44\xc2\x98\x44\xcb\xc3\xff\x52" ++
+            "\xc6\xff\x5a\xc6\xff\x25\xff\x2d\xea\x88\x77\x66\x55",
+    );
+    const reader = stream.reader();
+
+    try testExpectModInstr(.mov, .{ .reg = .si }, .{ .reg = .bx }, try decodeNext(reader, null));
+    try testExpectModInstr(.mov, .{ .reg = .dh }, .{ .reg = .al }, try decodeNext(reader, null));
+    try testExpectDataInstr(.mov, .cl, 12, try decodeNext(reader, null));
+    try testExpectDataInstr(.mov, .ch, @bitCast(u8, @as(i8, -12)), try decodeNext(reader, null));
+    try testExpectDataInstr(.mov, .cx, 12, try decodeNext(reader, null));
+    try testExpectDataInstr(.mov, .cx, @bitCast(u16, @as(i16, -12)), try decodeNext(reader, null));
+    try testExpectDataInstr(.mov, .dx, 3948, try decodeNext(reader, null));
+    try testExpectDataInstr(.mov, .dx, @bitCast(u16, @as(i16, -3948)), try decodeNext(reader, null));
+    try testExpectModInstr(.mov, .{ .reg = .al }, .{ .addr = .{ .disp_regs = .bx_si } }, try decodeNext(reader, null));
+    try testExpectModInstr(.mov, .{ .reg = .bx }, .{ .addr = .{ .disp_regs = .bp_di } }, try decodeNext(reader, null));
+    try testExpectModInstr(.mov, .{ .reg = .dx }, .{ .addr = .{ .disp_regs = .bp } }, try decodeNext(reader, null));
+    try testExpectModInstr(.mov, .{ .reg = .ah }, .{ .addr = .{ .disp_regs = .bx_si, .disp = 4 } }, try decodeNext(reader, null));
+    try testExpectModInstr(.mov, .{ .reg = .al }, .{ .addr = .{ .disp_regs = .bx_si, .disp = 4999 } }, try decodeNext(reader, null));
+    try testExpectModInstr(.mov, .{ .addr = .{ .disp_regs = .bx_di } }, .{ .reg = .cx }, try decodeNext(reader, null));
+    try testExpectModInstr(.mov, .{ .addr = .{ .disp_regs = .bp_si } }, .{ .reg = .cl }, try decodeNext(reader, null));
+    try testExpectModInstr(.mov, .{ .addr = .{ .disp_regs = .bp } }, .{ .reg = .ch }, try decodeNext(reader, null));
+    try testExpectModInstr(
+        .mov,
+        .{ .reg = .ax },
+        .{ .addr = .{ .disp_regs = .bx_di, .disp = @bitCast(u8, @as(i8, -37)) } },
+        try decodeNext(reader, null),
+    );
+    try testExpectModInstr(
+        .mov,
+        .{ .addr = .{ .disp_regs = .si, .disp = @bitCast(u16, @as(i16, -300)) } },
+        .{ .reg = .cx },
+        try decodeNext(reader, null),
+    );
+    try testExpectModInstr(
+        .mov,
+        .{ .reg = .dx },
+        .{ .addr = .{ .disp_regs = .bx, .disp = @bitCast(u8, @as(i8, -32)) } },
+        try decodeNext(reader, null),
+    );
+    try testExpectModSpecialInstr(
+        .mov,
+        .{ .addr = .{ .disp_regs = .bp_di } },
+        .{ .imm_unsigned = 7 },
+        try decodeNext(reader, null),
+    );
+    try testExpectModSpecialInstr(
+        .mov,
+        .{ .addr = .{ .disp_regs = .di, .disp = 901 } },
+        .{ .imm_unsigned = 347 },
+        try decodeNext(reader, null),
+    );
+    try testExpectModInstr(.mov, .{ .reg = .bp }, .{ .addr = .{ .disp = 5 } }, try decodeNext(reader, null));
+    try testExpectModInstr(.mov, .{ .reg = .bx }, .{ .addr = .{ .disp = 3458 } }, try decodeNext(reader, null));
+    try testExpectAddrInstr(.mov, .{ .reg = .ax }, .{ .addr = 2555 }, try decodeNext(reader, null));
+    try testExpectAddrInstr(.mov, .{ .reg = .ax }, .{ .addr = 16 }, try decodeNext(reader, null));
+    try testExpectAddrInstr(.mov, .{ .addr = 2554 }, .{ .reg = .ax }, try decodeNext(reader, null));
+    try testExpectAddrInstr(.mov, .{ .addr = 15 }, .{ .reg = .ax }, try decodeNext(reader, null));
+
+    try testExpectModSpecialInstr(.push, .{ .addr = .{ .disp_regs = .bp_si } }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.push, .{ .addr = .{ .disp = 3000 } }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(
+        .push,
+        .{ .addr = .{ .disp_regs = .bx_di, .disp = @bitCast(u8, @as(i8, -30)) } },
+        .none,
+        try decodeNext(reader, null),
+    );
+    try testing.expectEqual(Instruction{ .op = .push, .payload = .{ .reg = .cx } }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .push, .payload = .{ .reg = .ax } }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .push, .payload = .{ .reg = .dx } }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .push, .payload = .{ .reg = .cs } }, (try decodeNext(reader, null)).?);
+
+    try testExpectModSpecialInstr(.pop, .{ .addr = .{ .disp_regs = .bp_si } }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.pop, .{ .addr = .{ .disp = 3 } }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(
+        .pop,
+        .{ .addr = .{ .disp_regs = .bx_di, .disp = @bitCast(u16, @as(i16, -3000)) } },
+        .none,
+        try decodeNext(reader, null),
+    );
+    try testing.expectEqual(Instruction{ .op = .pop, .payload = .{ .reg = .sp } }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .pop, .payload = .{ .reg = .di } }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .pop, .payload = .{ .reg = .si } }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .pop, .payload = .{ .reg = .ds } }, (try decodeNext(reader, null)).?);
+
+    try testExpectModInstr(
+        .xchg,
+        .{ .reg = .ax },
+        .{ .addr = .{ .disp_regs = .bp, .disp = @bitCast(u16, @as(i16, -1000)) } },
+        try decodeNext(reader, null),
+    );
+    try testExpectModInstr(.xchg, .{ .reg = .bp }, .{ .addr = .{ .disp_regs = .bx, .disp = 50 } }, try decodeNext(reader, null));
+
+    try testing.expectEqual(Instruction{ .op = .nop, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(
+        Instruction{ .op = .xchg, .payload = .{ .regs = .{ .dst = .ax, .src = .dx } } },
+        (try decodeNext(reader, null)).?,
+    );
+    try testing.expectEqual(
+        Instruction{ .op = .xchg, .payload = .{ .regs = .{ .dst = .ax, .src = .sp } } },
+        (try decodeNext(reader, null)).?,
+    );
+    try testing.expectEqual(
+        Instruction{ .op = .xchg, .payload = .{ .regs = .{ .dst = .ax, .src = .si } } },
+        (try decodeNext(reader, null)).?,
+    );
+    try testing.expectEqual(
+        Instruction{ .op = .xchg, .payload = .{ .regs = .{ .dst = .ax, .src = .di } } },
+        (try decodeNext(reader, null)).?,
+    );
+
+    try testExpectModInstr(.xchg, .{ .reg = .cx }, .{ .reg = .dx }, try decodeNext(reader, null));
+    try testExpectModInstr(.xchg, .{ .reg = .si }, .{ .reg = .cx }, try decodeNext(reader, null));
+    try testExpectModInstr(.xchg, .{ .reg = .cl }, .{ .reg = .ah }, try decodeNext(reader, null));
+
+    // TODO
+    std.debug.print(
+        "TODO next instr: {}\n",
+        .{std.fmt.Formatter(struct {
+            fn f(instr: Instruction, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
+                return std.fmt.formatType(instr, fmt, options, writer, 999);
+            }
+        }.f){ .data = (try decodeNext(reader, null)).? }},
+    );
+    if (true) return error.SkipZigTest;
 
     try testing.expectEqual(@as(?Instruction, null), try decodeNext(reader, null));
 }
