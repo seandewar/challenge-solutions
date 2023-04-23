@@ -450,10 +450,9 @@ const ModInstr = struct {
 };
 
 fn decodeModInstr(reader: anytype, first: u8) !ModInstr {
-    const w = first & 1 == 1;
-    const d = switch (first) {
-        0x8d, 0xc4, 0xc5 => false,
-        else => (first >> 1) & 1 == 1,
+    const info: struct { w: bool, d: bool } = switch (first) {
+        0x8d, 0xc4, 0xc5 => .{ .w = true, .d = true },
+        else => .{ .w = first & 1 == 1, .d = (first >> 1) & 1 == 1 },
     };
 
     const second = try reader.readByte();
@@ -461,11 +460,11 @@ fn decodeModInstr(reader: anytype, first: u8) !ModInstr {
     const rm = @intCast(u3, second & 0b111);
     const reg = switch (first) {
         0x8c, 0x8e => Register.getSegment(@intCast(u2, (second >> 3) & 0b11)),
-        else => Register.getGeneralPurpose(@intCast(u3, (second >> 3) & 0b111), w),
+        else => Register.getGeneralPurpose(@intCast(u3, (second >> 3) & 0b111), info.w),
     };
-    const operand = try decodeModOperand(reader, mod, rm, w);
+    const operand = try decodeModOperand(reader, mod, rm, info.w);
 
-    return .{ .d = d, .reg = reg, .operand = operand };
+    return .{ .d = info.d, .reg = reg, .operand = operand };
 }
 
 const ModSpecialInstr = struct {
@@ -1001,6 +1000,122 @@ test "42: completionist decode" {
     try testExpectModInstr(.xchg, .{ .reg = .cx }, .{ .reg = .dx }, try decodeNext(reader, null));
     try testExpectModInstr(.xchg, .{ .reg = .si }, .{ .reg = .cx }, try decodeNext(reader, null));
     try testExpectModInstr(.xchg, .{ .reg = .cl }, .{ .reg = .ah }, try decodeNext(reader, null));
+
+    try testExpectDataInstr(.in, .al, 200, try decodeNext(reader, null));
+    try testing.expectEqual(
+        Instruction{ .op = .in, .payload = .{ .regs = .{ .dst = .al, .src = .dx } } },
+        (try decodeNext(reader, null)).?,
+    );
+    try testing.expectEqual(
+        Instruction{ .op = .in, .payload = .{ .regs = .{ .dst = .ax, .src = .dx } } },
+        (try decodeNext(reader, null)).?,
+    );
+
+    try testExpectDataInstr(.out, .ax, 44, try decodeNext(reader, null));
+    try testing.expectEqual(
+        Instruction{ .op = .out, .payload = .{ .regs = .{ .dst = .al, .src = .dx } } },
+        (try decodeNext(reader, null)).?,
+    );
+
+    try testing.expectEqual(Instruction{ .op = .xlat, .payload = .none }, (try decodeNext(reader, null)).?);
+
+    for ([_]Operation{ .lea, .lds, .les }) |op| {
+        try testExpectModInstr(
+            op,
+            .{ .reg = .ax },
+            .{ .addr = .{ .disp_regs = .bx_di, .disp = 1420 } },
+            try decodeNext(reader, null),
+        );
+        try testExpectModInstr(
+            op,
+            .{ .reg = .bx },
+            .{ .addr = .{ .disp_regs = .bp, .disp = @bitCast(u8, @as(i8, -50)) } },
+            try decodeNext(reader, null),
+        );
+        try testExpectModInstr(
+            op,
+            .{ .reg = .sp },
+            .{ .addr = .{ .disp_regs = .bp, .disp = @bitCast(u16, @as(i16, -1003)) } },
+            try decodeNext(reader, null),
+        );
+        try testExpectModInstr(
+            op,
+            .{ .reg = .di },
+            .{ .addr = .{ .disp_regs = .bx_si, .disp = @bitCast(u8, @as(i8, -7)) } },
+            try decodeNext(reader, null),
+        );
+    }
+
+    try testing.expectEqual(Instruction{ .op = .lahf, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .sahf, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .pushf, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .popf, .payload = .none }, (try decodeNext(reader, null)).?);
+
+    const testAddSub = struct {
+        fn f(r: anytype, op: Operation) !void {
+            try testExpectModInstr(op, .{ .reg = .cx }, .{ .addr = .{ .disp_regs = .bp } }, try decodeNext(r, null));
+            try testExpectModInstr(op, .{ .reg = .dx }, .{ .addr = .{ .disp_regs = .bx_si } }, try decodeNext(r, null));
+            try testExpectModInstr(op, .{ .addr = .{ .disp_regs = .bp_di, .disp = 5000 } }, .{ .reg = .ah }, try decodeNext(r, null));
+            try testExpectModInstr(op, .{ .addr = .{ .disp_regs = .bx } }, .{ .reg = .al }, try decodeNext(r, null));
+            try testExpectModSpecialInstr(op, .{ .reg = .sp }, .{ .imm_unsigned = 392 }, try decodeNext(r, null));
+            try testExpectModSpecialInstr(op, .{ .reg = .si }, .{ .imm_signed = 5 }, try decodeNext(r, null));
+            try testExpectDataInstr(op, .ax, 1000, try decodeNext(r, null));
+            try testExpectModSpecialInstr(op, .{ .reg = .ah }, .{ .imm_unsigned = 30 }, try decodeNext(r, null));
+            try testExpectDataInstr(op, .al, 9, try decodeNext(r, null));
+            try testExpectModInstr(op, .{ .reg = .cx }, .{ .reg = .bx }, try decodeNext(r, null));
+            try testExpectModInstr(op, .{ .reg = .ch }, .{ .reg = .al }, try decodeNext(r, null));
+        }
+    }.f;
+
+    try testAddSub(reader, .add);
+    try testAddSub(reader, .adc);
+
+    const testIncDecNeg = struct {
+        fn f(r: anytype, op: Operation) !void {
+            if (op == .neg) {
+                try testExpectModSpecialInstr(op, .{ .reg = .ax }, .none, try decodeNext(r, null));
+                try testExpectModSpecialInstr(op, .{ .reg = .cx }, .none, try decodeNext(r, null));
+            } else {
+                try testing.expectEqual(Instruction{ .op = op, .payload = .{ .reg = .ax } }, (try decodeNext(r, null)).?);
+                try testing.expectEqual(Instruction{ .op = op, .payload = .{ .reg = .cx } }, (try decodeNext(r, null)).?);
+            }
+
+            try testExpectModSpecialInstr(op, .{ .reg = .dh }, .none, try decodeNext(r, null));
+            try testExpectModSpecialInstr(op, .{ .reg = .al }, .none, try decodeNext(r, null));
+            try testExpectModSpecialInstr(op, .{ .reg = .ah }, .none, try decodeNext(r, null));
+
+            if (op == .neg) {
+                try testExpectModSpecialInstr(op, .{ .reg = .sp }, .none, try decodeNext(r, null));
+                try testExpectModSpecialInstr(op, .{ .reg = .di }, .none, try decodeNext(r, null));
+            } else {
+                try testing.expectEqual(Instruction{ .op = op, .payload = .{ .reg = .sp } }, (try decodeNext(r, null)).?);
+                try testing.expectEqual(Instruction{ .op = op, .payload = .{ .reg = .di } }, (try decodeNext(r, null)).?);
+            }
+
+            try testExpectModSpecialInstr(op, .{ .addr = .{ .disp_regs = .bp, .disp = 1002 } }, .none, try decodeNext(r, null));
+            try testExpectModSpecialInstr(op, .{ .addr = .{ .disp_regs = .bx, .disp = 39 } }, .none, try decodeNext(r, null));
+            try testExpectModSpecialInstr(op, .{ .addr = .{ .disp_regs = .bx_si, .disp = 5 } }, .none, try decodeNext(r, null));
+            try testExpectModSpecialInstr(
+                op,
+                .{ .addr = .{ .disp_regs = .bp_di, .disp = @bitCast(u16, @as(i16, -10044)) } },
+                .none,
+                try decodeNext(r, null),
+            );
+            try testExpectModSpecialInstr(op, .{ .addr = .{ .disp = 9349 } }, .none, try decodeNext(r, null));
+            try testExpectModSpecialInstr(op, .{ .addr = .{ .disp_regs = .bp } }, .none, try decodeNext(r, null));
+        }
+    }.f;
+
+    try testIncDecNeg(reader, .inc);
+
+    try testing.expectEqual(Instruction{ .op = .aaa, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .daa, .payload = .none }, (try decodeNext(reader, null)).?);
+
+    try testAddSub(reader, .sub);
+    try testAddSub(reader, .sbb);
+
+    try testIncDecNeg(reader, .dec);
+    try testIncDecNeg(reader, .neg);
 
     // TODO
     std.debug.print(
