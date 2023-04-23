@@ -15,7 +15,8 @@ const Operation = enum {
     cli,
     cmc,
     cmp,
-    cmps,
+    cmpsb,
+    cmpsw,
     cwd,
     daa,
     das,
@@ -51,12 +52,14 @@ const Operation = enum {
     lds,
     lea,
     les,
-    lods,
+    lodsb,
+    lodsw,
     loop,
     loope,
     loopne,
     mov,
-    movs,
+    movsb,
+    movsw,
     mul,
     neg,
     nop,
@@ -69,8 +72,6 @@ const Operation = enum {
     pushf,
     rcl,
     rcr,
-    rep,
-    repne,
     ret,
     retf,
     rol,
@@ -79,12 +80,14 @@ const Operation = enum {
     sal,
     sar,
     sbb,
-    scas,
+    scasb,
+    scasw,
     shr,
     stc,
     std,
     sti,
-    stos,
+    stosb,
+    stosw,
     sub,
     @"test",
     wait,
@@ -92,6 +95,8 @@ const Operation = enum {
     xlat,
     xor,
 
+    rep_prefix,
+    repne_prefix,
     lock_prefix,
     cs_prefix,
     ds_prefix,
@@ -152,12 +157,6 @@ const InstrPayload = union(enum) {
     regs: struct { dst: Register, src: Register },
     reg: Register,
     imm: u16,
-    dest_str8_src_str8,
-    dest_str16_src_str16,
-    dest_str8,
-    dest_str16,
-    src_str8,
-    src_str16,
 };
 
 pub fn decodeNext(reader: anytype, error_payload: ?*UnknownInstrPayload) !?Instruction {
@@ -267,11 +266,16 @@ pub fn decodeNext(reader: anytype, error_payload: ?*UnknownInstrPayload) !?Instr
         0x9d => .popf,
         0x9e => .sahf,
         0x9f => .lahf,
-        0xa4...0xa5 => .movs,
-        0xa6...0xa7 => .cmps,
-        0xaa...0xab => .stos,
-        0xac...0xad => .lods,
-        0xae...0xaf => .scas,
+        0xa4 => .movsb,
+        0xa5 => .movsw,
+        0xa6 => .cmpsb,
+        0xa7 => .cmpsw,
+        0xaa => .stosb,
+        0xab => .stosw,
+        0xac => .lodsb,
+        0xad => .lodsw,
+        0xae => .scasb,
+        0xaf => .scasw,
         0xc2...0xc3 => .ret,
         0xca...0xcb => .retf,
         0xc4 => .les,
@@ -288,8 +292,8 @@ pub fn decodeNext(reader: anytype, error_payload: ?*UnknownInstrPayload) !?Instr
         0xe6...0xe7, 0xee...0xef => .out,
         0xe9...0xeb => .jmp,
         0xf0 => .lock_prefix,
-        0xf2 => .repne,
-        0xf3 => .rep,
+        0xf2 => .repne_prefix,
+        0xf3 => .rep_prefix,
         0xf4 => .hlt,
         0xf5 => .cmc,
 
@@ -392,13 +396,6 @@ pub fn decodeNext(reader: anytype, error_payload: ?*UnknownInstrPayload) !?Instr
         } },
 
         0xa0...0xa3 => .{ .addr = try decodeAddrInstr(reader, first) },
-
-        0xa4, 0xa6 => .dest_str8_src_str8,
-        0xa5, 0xa7 => .dest_str16_src_str16,
-        0xaa, 0xae => .dest_str8,
-        0xab, 0xaf => .dest_str16,
-        0xac => .src_str8,
-        0xad => .src_str16,
 
         0xc2, 0xca => .{ .imm = try reader.readIntLittle(u16) },
         0xcc => .{ .imm = 3 },
@@ -1117,12 +1114,24 @@ test "42: completionist decode" {
     try testIncDecNeg(reader, .dec);
     try testIncDecNeg(reader, .neg);
 
-    try testExpectModInstr(.cmp, .{ .reg = .bx }, .{ .reg = .cx }, try decodeNext(reader, null));
-    try testExpectModInstr(.cmp, .{ .reg = .dh }, .{ .addr = .{ .disp_regs = .bp, .disp = 390 } }, try decodeNext(reader, null));
-    try testExpectModInstr(.cmp, .{ .addr = .{ .disp_regs = .bp, .disp = 2 } }, .{ .reg = .si }, try decodeNext(reader, null));
-    try testExpectModSpecialInstr(.cmp, .{ .reg = .bl }, .{ .imm_unsigned = 20 }, try decodeNext(reader, null));
-    try testExpectModSpecialInstr(.cmp, .{ .addr = .{ .disp_regs = .bx } }, .{ .imm_unsigned = 34 }, try decodeNext(reader, null));
-    try testExpectDataInstr(.cmp, .ax, 23909, try decodeNext(reader, null));
+    const testCmpTest = struct {
+        fn f(r: anytype, op: Operation) !void {
+            try testExpectModInstr(op, .{ .reg = .bx }, .{ .reg = .cx }, try decodeNext(r, null));
+
+            if (op == .cmp) {
+                try testExpectModInstr(op, .{ .reg = .dh }, .{ .addr = .{ .disp_regs = .bp, .disp = 390 } }, try decodeNext(r, null));
+            } else {
+                try testExpectModInstr(op, .{ .addr = .{ .disp_regs = .bp, .disp = 390 } }, .{ .reg = .dh }, try decodeNext(r, null));
+            }
+
+            try testExpectModInstr(op, .{ .addr = .{ .disp_regs = .bp, .disp = 2 } }, .{ .reg = .si }, try decodeNext(r, null));
+            try testExpectModSpecialInstr(op, .{ .reg = .bl }, .{ .imm_unsigned = 20 }, try decodeNext(r, null));
+            try testExpectModSpecialInstr(op, .{ .addr = .{ .disp_regs = .bx } }, .{ .imm_unsigned = 34 }, try decodeNext(r, null));
+            try testExpectDataInstr(op, .ax, 23909, try decodeNext(r, null));
+        }
+    }.f;
+
+    try testCmpTest(reader, .cmp);
 
     try testing.expectEqual(Instruction{ .op = .aas, .payload = .none }, (try decodeNext(reader, null)).?);
     try testing.expectEqual(Instruction{ .op = .das, .payload = .none }, (try decodeNext(reader, null)).?);
@@ -1153,7 +1162,236 @@ test "42: completionist decode" {
     try testing.expectEqual(Instruction{ .op = .cbw, .payload = .none }, (try decodeNext(reader, null)).?);
     try testing.expectEqual(Instruction{ .op = .cwd, .payload = .none }, (try decodeNext(reader, null)).?);
 
-    // TODO
+    try testExpectModSpecialInstr(.not, .{ .reg = .ah }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.not, .{ .reg = .bl }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.not, .{ .reg = .sp }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.not, .{ .reg = .si }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.not, .{ .addr = .{ .disp_regs = .bp } }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.not, .{ .addr = .{ .disp_regs = .bp, .disp = 9905 } }, .none, try decodeNext(reader, null));
+
+    for ([_]ModSpecialInstr.SrcOperand{ .{ .imm_unsigned = 1 }, .cl }) |src| {
+        try testExpectModSpecialInstr(.sal, .{ .reg = .ah }, src, try decodeNext(reader, null));
+        try testExpectModSpecialInstr(.shr, .{ .reg = .ax }, src, try decodeNext(reader, null));
+        try testExpectModSpecialInstr(.sar, .{ .reg = .bx }, src, try decodeNext(reader, null));
+        try testExpectModSpecialInstr(.rol, .{ .reg = .cx }, src, try decodeNext(reader, null));
+        try testExpectModSpecialInstr(.ror, .{ .reg = .dh }, src, try decodeNext(reader, null));
+        try testExpectModSpecialInstr(.rcl, .{ .reg = .sp }, src, try decodeNext(reader, null));
+        try testExpectModSpecialInstr(.rcr, .{ .reg = .bp }, src, try decodeNext(reader, null));
+
+        try testExpectModSpecialInstr(.sal, .{ .addr = .{ .disp_regs = .bp, .disp = 5 } }, src, try decodeNext(reader, null));
+        try testExpectModSpecialInstr(
+            .shr,
+            .{ .addr = .{ .disp_regs = .bx_si, .disp = @bitCast(u16, @as(i16, -199)) } },
+            src,
+            try decodeNext(reader, null),
+        );
+        try testExpectModSpecialInstr(
+            .sar,
+            .{ .addr = .{ .disp_regs = .bx_di, .disp = @bitCast(u16, @as(i16, -300)) } },
+            src,
+            try decodeNext(reader, null),
+        );
+        try testExpectModSpecialInstr(.rol, .{ .addr = .{ .disp_regs = .bp } }, src, try decodeNext(reader, null));
+        try testExpectModSpecialInstr(.ror, .{ .addr = .{ .disp = 4938 } }, src, try decodeNext(reader, null));
+        try testExpectModSpecialInstr(.rcl, .{ .addr = .{ .disp = 3 } }, src, try decodeNext(reader, null));
+        try testExpectModSpecialInstr(.rcr, .{ .addr = .{ .disp_regs = .bx } }, src, try decodeNext(reader, null));
+    }
+
+    const testAndOrXor = struct {
+        fn f(r: anytype, op: Operation) !void {
+            try testExpectModInstr(op, .{ .reg = .al }, .{ .reg = .ah }, try decodeNext(r, null));
+            try testExpectModInstr(op, .{ .reg = .ch }, .{ .reg = .cl }, try decodeNext(r, null));
+            try testExpectModInstr(op, .{ .reg = .bp }, .{ .reg = .si }, try decodeNext(r, null));
+            try testExpectModInstr(op, .{ .reg = .di }, .{ .reg = .sp }, try decodeNext(r, null));
+            try testExpectDataInstr(op, .al, 93, try decodeNext(r, null));
+            try testExpectDataInstr(op, .ax, 20392, try decodeNext(r, null));
+            try testExpectModInstr(op, .{ .addr = .{ .disp_regs = .bp_si, .disp = 10 } }, .{ .reg = .ch }, try decodeNext(r, null));
+            try testExpectModInstr(op, .{ .addr = .{ .disp_regs = .bx_di, .disp = 1000 } }, .{ .reg = .dx }, try decodeNext(r, null));
+            try testExpectModInstr(op, .{ .reg = .bx }, .{ .addr = .{ .disp_regs = .bp } }, try decodeNext(r, null));
+            try testExpectModInstr(op, .{ .reg = .cx }, .{ .addr = .{ .disp = 4384 } }, try decodeNext(r, null));
+            try testExpectModSpecialInstr(
+                op,
+                .{ .addr = .{ .disp_regs = .bp, .disp = @bitCast(u8, @as(i8, -39)) } },
+                .{ .imm_unsigned = 239 },
+                try decodeNext(r, null),
+            );
+            try testExpectModSpecialInstr(
+                op,
+                .{ .addr = .{ .disp_regs = .bx_si, .disp = @bitCast(u16, @as(i16, -4332)) } },
+                .{ .imm_unsigned = 10328 },
+                try decodeNext(r, null),
+            );
+        }
+    }.f;
+
+    try testAndOrXor(reader, .@"and");
+
+    try testCmpTest(reader, .@"test");
+
+    try testAndOrXor(reader, .@"or");
+    try testAndOrXor(reader, .xor);
+
+    try testing.expectEqual(Instruction{ .op = .rep_prefix, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .movsb, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .rep_prefix, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .cmpsb, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .rep_prefix, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .scasb, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .rep_prefix, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .lodsb, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .rep_prefix, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .movsw, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .rep_prefix, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .cmpsw, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .rep_prefix, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .scasw, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .rep_prefix, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .lodsw, .payload = .none }, (try decodeNext(reader, null)).?);
+
+    try testing.expectEqual(Instruction{ .op = .rep_prefix, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .stosb, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .rep_prefix, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .stosw, .payload = .none }, (try decodeNext(reader, null)).?);
+
+    try testExpectModSpecialInstr(.call, .{ .addr = .{ .disp = 39201 } }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.call, .{ .addr = .{ .disp_regs = .bp, .disp = @bitCast(u8, @as(i8, -100)) } }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.call, .{ .reg = .sp }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.call, .{ .reg = .ax }, .none, try decodeNext(reader, null));
+
+    try testExpectModSpecialInstr(.jmp, .{ .reg = .ax }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.jmp, .{ .reg = .di }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.jmp, .{ .addr = .{ .disp = 12 } }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.jmp, .{ .addr = .{ .disp = 4395 } }, .none, try decodeNext(reader, null));
+
+    try testing.expectEqual(Instruction{ .op = .ret, .payload = .{ .imm = @bitCast(u16, @as(i16, -7)) } }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .ret, .payload = .{ .imm = 500 } }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .ret, .payload = .none }, (try decodeNext(reader, null)).?);
+
+    inline for (.{
+        .je,
+        .jl,
+        .jle,
+        .jb,
+        .jbe,
+        .jp,
+        .jo,
+        .js,
+        .jne,
+        .jnl,
+        .jnle,
+        .jnb,
+        .jnbe,
+        .jnp,
+        .jno,
+        .jns,
+        .loop,
+        .loope,
+        .loopne,
+        .jcxz,
+    }, 1..) |op, off| {
+        try testing.expectEqual(
+            Instruction{ .op = op, .payload = .{ .ip_disp = -2 * @intCast(i16, off) } },
+            (try decodeNext(reader, null)).?,
+        );
+    }
+
+    try testing.expectEqual(Instruction{ .op = .int, .payload = .{ .imm = 13 } }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .int, .payload = .{ .imm = 3 } }, (try decodeNext(reader, null)).?);
+
+    try testing.expectEqual(Instruction{ .op = .into, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .iret, .payload = .none }, (try decodeNext(reader, null)).?);
+
+    try testing.expectEqual(Instruction{ .op = .clc, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .cmc, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .stc, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .cld, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .std, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .cli, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .sti, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .hlt, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .wait, .payload = .none }, (try decodeNext(reader, null)).?);
+
+    try testing.expectEqual(Instruction{ .op = .lock_prefix, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testExpectModSpecialInstr(.not, .{ .addr = .{ .disp_regs = .bp, .disp = 9905 } }, .none, try decodeNext(reader, null));
+    try testing.expectEqual(Instruction{ .op = .lock_prefix, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testExpectModInstr(.xchg, .{ .reg = .al }, .{ .addr = .{ .disp = 100 } }, try decodeNext(reader, null));
+
+    try testing.expectEqual(Instruction{ .op = .cs_prefix, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testExpectModInstr(.mov, .{ .reg = .al }, .{ .addr = .{ .disp_regs = .bx_si } }, try decodeNext(reader, null));
+    try testing.expectEqual(Instruction{ .op = .ds_prefix, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testExpectModInstr(.mov, .{ .reg = .bx }, .{ .addr = .{ .disp_regs = .bp_di } }, try decodeNext(reader, null));
+    try testing.expectEqual(Instruction{ .op = .es_prefix, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testExpectModInstr(.mov, .{ .reg = .dx }, .{ .addr = .{ .disp_regs = .bp } }, try decodeNext(reader, null));
+    try testing.expectEqual(Instruction{ .op = .ss_prefix, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testExpectModInstr(.mov, .{ .reg = .ah }, .{ .addr = .{ .disp_regs = .bx_si, .disp = 4 } }, try decodeNext(reader, null));
+
+    try testing.expectEqual(Instruction{ .op = .ss_prefix, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testExpectModInstr(
+        .@"and",
+        .{ .addr = .{ .disp_regs = .bp_si, .disp = 10 } },
+        .{ .reg = .ch },
+        try decodeNext(reader, null),
+    );
+    try testing.expectEqual(Instruction{ .op = .ds_prefix, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testExpectModInstr(
+        .@"or",
+        .{ .addr = .{ .disp_regs = .bx_di, .disp = 1000 } },
+        .{ .reg = .dx },
+        try decodeNext(reader, null),
+    );
+    try testing.expectEqual(Instruction{ .op = .es_prefix, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testExpectModInstr(.xor, .{ .reg = .bx }, .{ .addr = .{ .disp_regs = .bp } }, try decodeNext(reader, null));
+    try testing.expectEqual(Instruction{ .op = .es_prefix, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testExpectModInstr(.cmp, .{ .reg = .cx }, .{ .addr = .{ .disp = 4384 } }, try decodeNext(reader, null));
+    try testing.expectEqual(Instruction{ .op = .cs_prefix, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testExpectModSpecialInstr(
+        .@"test",
+        .{ .addr = .{ .disp_regs = .bp, .disp = @bitCast(u8, @as(i8, -39)) } },
+        .{ .imm_unsigned = 239 },
+        try decodeNext(reader, null),
+    );
+    try testing.expectEqual(Instruction{ .op = .cs_prefix, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testExpectModSpecialInstr(
+        .sbb,
+        .{ .addr = .{ .disp_regs = .bx_si, .disp = @bitCast(u16, @as(i16, -4332)) } },
+        .{ .imm_unsigned = 10328 },
+        try decodeNext(reader, null),
+    );
+
+    try testing.expectEqual(Instruction{ .op = .lock_prefix, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .cs_prefix, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testExpectModSpecialInstr(.not, .{ .addr = .{ .disp_regs = .bp, .disp = 9905 } }, .none, try decodeNext(reader, null));
+
+    try testing.expectEqual(
+        Instruction{ .op = .call, .payload = .{ .interseg_addr = .{ .cs = 123, .addr = 456 } } },
+        (try decodeNext(reader, null)).?,
+    );
+    try testing.expectEqual(
+        Instruction{ .op = .jmp, .payload = .{ .interseg_addr = .{ .cs = 789, .addr = 34 } } },
+        (try decodeNext(reader, null)).?,
+    );
+
+    try testExpectModInstr(.mov, .{ .addr = .{ .disp_regs = .bx_si, .disp = 59 } }, .{ .reg = .es }, try decodeNext(reader, null));
+
+    // TODO: wut
+    try testing.expectEqual(Instruction{ .op = .jmp, .payload = .{ .ip_disp = 2620 } }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .call, .payload = .{ .ip_disp = 11804 } }, (try decodeNext(reader, null)).?);
+    //
+    // jmp 2620
+    // call 11804
+    //
+    // retf 17556
+    // ret 17560
+    // retf
+    // ret
+    //
+    // call [bp+si-0x3a]
+    // call far [bp+si-0x3a]
+    // jmp [di]
+    // jmp far [di]
+    //
+    // jmp 21862:30600
+    //
     std.debug.print(
         "TODO next instr: {}\n",
         .{std.fmt.Formatter(struct {
