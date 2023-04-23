@@ -1117,6 +1117,42 @@ test "42: completionist decode" {
     try testIncDecNeg(reader, .dec);
     try testIncDecNeg(reader, .neg);
 
+    try testExpectModInstr(.cmp, .{ .reg = .bx }, .{ .reg = .cx }, try decodeNext(reader, null));
+    try testExpectModInstr(.cmp, .{ .reg = .dh }, .{ .addr = .{ .disp_regs = .bp, .disp = 390 } }, try decodeNext(reader, null));
+    try testExpectModInstr(.cmp, .{ .addr = .{ .disp_regs = .bp, .disp = 2 } }, .{ .reg = .si }, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.cmp, .{ .reg = .bl }, .{ .imm_unsigned = 20 }, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.cmp, .{ .addr = .{ .disp_regs = .bx } }, .{ .imm_unsigned = 34 }, try decodeNext(reader, null));
+    try testExpectDataInstr(.cmp, .ax, 23909, try decodeNext(reader, null));
+
+    try testing.expectEqual(Instruction{ .op = .aas, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .das, .payload = .none }, (try decodeNext(reader, null)).?);
+
+    try testExpectModSpecialInstr(.mul, .{ .reg = .al }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.mul, .{ .reg = .cx }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.mul, .{ .addr = .{ .disp_regs = .bp } }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.mul, .{ .addr = .{ .disp_regs = .bx_di, .disp = 500 } }, .none, try decodeNext(reader, null));
+
+    try testExpectModSpecialInstr(.imul, .{ .reg = .ch }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.imul, .{ .reg = .dx }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.imul, .{ .addr = .{ .disp_regs = .bx } }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.imul, .{ .addr = .{ .disp = 9483 } }, .none, try decodeNext(reader, null));
+
+    try testing.expectEqual(Instruction{ .op = .aam, .payload = .none }, (try decodeNext(reader, null)).?);
+
+    try testExpectModSpecialInstr(.div, .{ .reg = .bl }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.div, .{ .reg = .sp }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.div, .{ .addr = .{ .disp_regs = .bx_si, .disp = 2990 } }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.div, .{ .addr = .{ .disp_regs = .bp_di, .disp = 1000 } }, .none, try decodeNext(reader, null));
+
+    try testExpectModSpecialInstr(.idiv, .{ .reg = .ax }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.idiv, .{ .reg = .si }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.idiv, .{ .addr = .{ .disp_regs = .bp_si } }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(.idiv, .{ .addr = .{ .disp_regs = .bx, .disp = 493 } }, .none, try decodeNext(reader, null));
+
+    try testing.expectEqual(Instruction{ .op = .aad, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .cbw, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .cwd, .payload = .none }, (try decodeNext(reader, null)).?);
+
     // TODO
     std.debug.print(
         "TODO next instr: {}\n",
