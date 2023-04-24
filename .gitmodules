@@ -1,3 +1,6 @@
 [submodule "advent-of-code/2021"]
 	path = advent-of-code/2021
 	url = https://github.com/seandewar/advent-of-vimscript
+[submodule "computer-enhance/computer_enhance"]
+	path = computer-enhance/computer_enhance
+	url = https://github.com/cmuratori/computer_enhance.git
