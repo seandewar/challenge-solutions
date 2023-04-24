@@ -1254,7 +1254,12 @@ test "42: completionist decode" {
     try testing.expectEqual(Instruction{ .op = .stosw, .payload = .none }, (try decodeNext(reader, null)).?);
 
     try testExpectModSpecialInstr(.call, .{ .addr = .{ .disp = 39201 } }, .none, try decodeNext(reader, null));
-    try testExpectModSpecialInstr(.call, .{ .addr = .{ .disp_regs = .bp, .disp = @bitCast(u8, @as(i8, -100)) } }, .none, try decodeNext(reader, null));
+    try testExpectModSpecialInstr(
+        .call,
+        .{ .addr = .{ .disp_regs = .bp, .disp = @bitCast(u8, @as(i8, -100)) } },
+        .none,
+        try decodeNext(reader, null),
+    );
     try testExpectModSpecialInstr(.call, .{ .reg = .sp }, .none, try decodeNext(reader, null));
     try testExpectModSpecialInstr(.call, .{ .reg = .ax }, .none, try decodeNext(reader, null));
 
@@ -1263,7 +1268,10 @@ test "42: completionist decode" {
     try testExpectModSpecialInstr(.jmp, .{ .addr = .{ .disp = 12 } }, .none, try decodeNext(reader, null));
     try testExpectModSpecialInstr(.jmp, .{ .addr = .{ .disp = 4395 } }, .none, try decodeNext(reader, null));
 
-    try testing.expectEqual(Instruction{ .op = .ret, .payload = .{ .imm = @bitCast(u16, @as(i16, -7)) } }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(
+        Instruction{ .op = .ret, .payload = .{ .imm = @bitCast(u16, @as(i16, -7)) } },
+        (try decodeNext(reader, null)).?,
+    );
     try testing.expectEqual(Instruction{ .op = .ret, .payload = .{ .imm = 500 } }, (try decodeNext(reader, null)).?);
     try testing.expectEqual(Instruction{ .op = .ret, .payload = .none }, (try decodeNext(reader, null)).?);
 
@@ -1371,36 +1379,33 @@ test "42: completionist decode" {
         (try decodeNext(reader, null)).?,
     );
 
-    try testExpectModInstr(.mov, .{ .addr = .{ .disp_regs = .bx_si, .disp = 59 } }, .{ .reg = .es }, try decodeNext(reader, null));
-
-    // TODO: wut
-    try testing.expectEqual(Instruction{ .op = .jmp, .payload = .{ .ip_disp = 2620 } }, (try decodeNext(reader, null)).?);
-    try testing.expectEqual(Instruction{ .op = .call, .payload = .{ .ip_disp = 11804 } }, (try decodeNext(reader, null)).?);
-    //
-    // jmp 2620
-    // call 11804
-    //
-    // retf 17556
-    // ret 17560
-    // retf
-    // ret
-    //
-    // call [bp+si-0x3a]
-    // call far [bp+si-0x3a]
-    // jmp [di]
-    // jmp far [di]
-    //
-    // jmp 21862:30600
-    //
-    std.debug.print(
-        "TODO next instr: {}\n",
-        .{std.fmt.Formatter(struct {
-            fn f(instr: Instruction, comptime fmt: []const u8, options: std.fmt.FormatOptions, writer: anytype) !void {
-                return std.fmt.formatType(instr, fmt, options, writer, 999);
-            }
-        }.f){ .data = (try decodeNext(reader, null)).? }},
+    try testExpectModInstr(
+        .mov,
+        .{ .addr = .{ .disp_regs = .bx_si, .disp = 59 } },
+        .{ .reg = .es },
+        try decodeNext(reader, null),
     );
-    if (true) return error.SkipZigTest;
+
+    try testing.expectEqual(Instruction{ .op = .jmp, .payload = .{ .ip_disp = 1753 } }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .call, .payload = .{ .ip_disp = 10934 } }, (try decodeNext(reader, null)).?);
+
+    try testing.expectEqual(Instruction{ .op = .retf, .payload = .{ .imm = 17556 } }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .ret, .payload = .{ .imm = 17560 } }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .retf, .payload = .none }, (try decodeNext(reader, null)).?);
+    try testing.expectEqual(Instruction{ .op = .ret, .payload = .none }, (try decodeNext(reader, null)).?);
+
+    for (0..2) |_| try testExpectModSpecialInstr(
+        .call,
+        .{ .addr = .{ .disp_regs = .bp_si, .disp = @bitCast(u8, @as(i8, -0x3a)) } },
+        .none,
+        try decodeNext(reader, null),
+    );
+    for (0..2) |_| try testExpectModSpecialInstr(.jmp, .{ .addr = .{ .disp_regs = .di } }, .none, try decodeNext(reader, null));
+
+    try testing.expectEqual(
+        Instruction{ .op = .jmp, .payload = .{ .interseg_addr = .{ .cs = 21862, .addr = 30600 } } },
+        (try decodeNext(reader, null)).?,
+    );
 
     try testing.expectEqual(@as(?Instruction, null), try decodeNext(reader, null));
 }
