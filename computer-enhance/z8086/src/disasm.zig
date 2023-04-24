@@ -3,13 +3,12 @@ const log = std.log;
 
 const decode = @import("decode.zig");
 
-pub fn disasm(reader: anytype, raw_writer: anytype) !void {
+pub fn disasm(instr_it: anytype, raw_writer: anytype) !void {
     try raw_writer.writeAll("bits 16\n");
     var counting_writer = std.io.countingWriter(raw_writer);
     const writer = counting_writer.writer();
 
-    var it = decode.instrIterator(reader);
-    while (try it.next()) |instr| {
+    while (try instr_it.next()) |instr| {
         counting_writer.bytes_written = 0;
         try writer.writeAll(@tagName(instr.op));
 
@@ -56,8 +55,9 @@ pub fn disasm(reader: anytype, raw_writer: anytype) !void {
         const min_comment_pad = 42;
         for (@min(min_comment_pad, counting_writer.bytes_written)..min_comment_pad) |_| try writer.writeByte(' ');
         try writer.writeAll("  ;");
-        for (it.getPrevBytes()) |b| try writer.print(" {x:0>2}", .{b});
-        try writer.print(" ({s})\n", .{@tagName(instr.payload)});
+        for (instr_it.getPrevBytes()) |b| try writer.print(" {x:0>2}", .{b});
+        if (@import("builtin").mode == .Debug) try writer.print(" ({s})", .{@tagName(instr.payload)});
+        try writer.writeByte('\n');
     }
 }
 
@@ -74,7 +74,7 @@ fn printModOperand(writer: anytype, operand: decode.ModOperand) !void {
 
 pub fn main() !u8 {
     var stdout_buffered = std.io.bufferedWriter(std.io.getStdOut().writer());
-    defer flush(&stdout_buffered);
+    defer flushOrLogErr(&stdout_buffered);
     const stdout = stdout_buffered.writer();
 
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
@@ -85,35 +85,40 @@ pub fn main() !u8 {
 
     var file_i: usize = 0;
     while (args_it.next()) |file_path| : (file_i += 1) {
-        const file = std.fs.cwd().openFile(file_path, .{ .mode = .read_only }) catch |err| {
+        const file = std.fs.cwd().openFile(file_path, .{}) catch |err| {
             log.err("Failed to open file \"{s}\": {!}", .{ file_path, err });
             return 1;
         };
         defer file.close();
-        var file_buffered = std.io.bufferedReader(file.reader());
 
         if (file_i > 0) try stdout.writeByte('\n');
         try stdout.print("; {s}\n", .{file_path});
-
-        disasm(file_buffered.reader(), stdout_buffered.writer()) catch |err| {
-            flush(&stdout_buffered);
-            log.err("Failed to disassemble file \"{s}\": {!}", .{ file_path, err });
-            return 1;
-        };
+        disasmOrLogErr(file.reader(), &stdout_buffered, file_path) catch return 1;
     }
-
     if (file_i == 0) {
-        var stdin_buffered = std.io.bufferedReader(std.io.getStdIn().reader());
-        disasm(stdin_buffered.reader(), stdout_buffered.writer()) catch |err| {
-            flush(&stdout_buffered);
-            log.err("Failed to disassemble from standard input: {!}", .{err});
-            return 1;
-        };
+        disasmOrLogErr(std.io.getStdIn().reader(), &stdout_buffered, "from standard input") catch return 1;
     }
 
     return 0;
 }
 
-inline fn flush(buffered_writer: anytype) void {
+fn disasmOrLogErr(reader: anytype, buffered_writer: anytype, name: []const u8) !void {
+    var buffered_reader = std.io.bufferedReader(reader);
+    var it = decode.instrIterator(buffered_reader.reader());
+    disasm(&it, buffered_writer.writer()) catch |err| {
+        flushOrLogErr(buffered_writer);
+
+        log.err("Failed to disassemble {s}: {!}", .{ name, err });
+        if (it.getPrevBytes().len > 0) {
+            var buf: [" 0xXX".len * 6]u8 = undefined;
+            var buf_stream = std.io.fixedBufferStream(&buf);
+            for (it.getPrevBytes()) |b| buf_stream.writer().print(" 0x{x:0>2}", .{b}) catch unreachable;
+            log.err("(while decoding bytes: {{{s} }})", .{buf_stream.getWritten()});
+        }
+        return err;
+    };
+}
+
+inline fn flushOrLogErr(buffered_writer: anytype) void {
     buffered_writer.flush() catch |err| log.err("Failed to flush output: {!}", .{err});
 }
