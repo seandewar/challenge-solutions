@@ -18,10 +18,16 @@ pub fn disasm(reader: anytype, writer: anytype) !void {
             },
 
             .mod_special => |mod_special| {
+                if (mod_special.dst == .addr) {
+                    switch (instr.op) {
+                        .call, .callf, .jmp, .jmpf => {}, // Unambiguously a wide ptr.
+                        else => try writer.print(" {s} PTR", .{if (mod_special.w) "WORD" else "BYTE"}),
+                    }
+                }
                 try printModOperand(writer, mod_special.dst);
                 switch (mod_special.src) {
                     .uimm => |uimm| try writer.print(", 0x{x}", .{uimm}),
-                    .simm8 => |simm| try writer.print(", {s}0x{x}", .{ if (simm < 0) "-" else "", std.math.absCast(simm) }),
+                    .simm => |simm| try writer.print(", {s}0x{x}", .{ if (simm < 0) "-" else "", std.math.absCast(simm) }),
                     .cl => try writer.writeAll(", cl"),
                     .none => {},
                 }
@@ -46,7 +52,7 @@ pub fn disasm(reader: anytype, writer: anytype) !void {
 
         try writer.writeAll("  ;");
         for (it.getPrevBytes()) |b| try writer.print(" {x:0>2}", .{b});
-        try writer.writeByte('\n');
+        try writer.print(" ({s})\n", .{@tagName(instr.payload)});
     }
 }
 
