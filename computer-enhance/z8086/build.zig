@@ -12,6 +12,14 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(disasm_exe);
 
+    const sim_exe = b.addExecutable(.{
+        .name = "z8086-sim",
+        .root_source_file = .{ .path = "src/sim.zig" },
+        .target = target,
+        .optimize = optimize,
+    });
+    b.installArtifact(sim_exe);
+
     const run_cmd = b.addRunArtifact(disasm_exe);
     run_cmd.step.dependOn(b.getInstallStep());
     if (b.args) |args| {
