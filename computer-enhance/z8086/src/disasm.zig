@@ -3,11 +3,14 @@ const log = std.log;
 
 const decode = @import("decode.zig");
 
-pub fn disasm(reader: anytype, writer: anytype) !void {
-    try writer.writeAll("bits 16\n");
+pub fn disasm(reader: anytype, raw_writer: anytype) !void {
+    try raw_writer.writeAll("bits 16\n");
+    var counting_writer = std.io.countingWriter(raw_writer);
+    const writer = counting_writer.writer();
 
     var it = decode.instrIterator(reader);
     while (try it.next()) |instr| {
+        counting_writer.bytes_written = 0;
         try writer.writeAll(@tagName(instr.op));
 
         switch (instr.payload) {
@@ -50,6 +53,8 @@ pub fn disasm(reader: anytype, writer: anytype) !void {
             .none => {},
         }
 
+        const min_comment_pad = 42;
+        for (@min(min_comment_pad, counting_writer.bytes_written)..min_comment_pad) |_| try writer.writeByte(' ');
         try writer.writeAll("  ;");
         for (it.getPrevBytes()) |b| try writer.print(" {x:0>2}", .{b});
         try writer.print(" ({s})\n", .{@tagName(instr.payload)});
