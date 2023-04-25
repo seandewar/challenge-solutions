@@ -3,31 +3,33 @@ const testing = std.testing;
 
 const decode = @This();
 
-pub fn InstrIterator(comptime InnerReader: type) type {
+pub fn InstrIterator(comptime InnerReader: type, comptime prev_bytes_cap: usize) type {
     return struct {
-        last_read_bytes: std.BoundedArray(u8, 6) = .{},
+        pub const prev_bytes_capacity = prev_bytes_cap;
+        prev_bytes: std.BoundedArray(u8, prev_bytes_cap) = .{},
         inner_reader: InnerReader,
 
-        const Reader = std.io.Reader(*@This(), InnerReader.Error, read);
+        const ReadError = InnerReader.Error || error{Overflow};
+        const Reader = std.io.Reader(*@This(), ReadError, read);
 
         pub inline fn next(self: *@This()) !?Instr {
-            self.last_read_bytes.len = 0;
+            self.prev_bytes.len = 0;
             return decode.nextInstr(Reader{ .context = self });
         }
 
         pub inline fn getPrevBytes(self: @This()) []const u8 {
-            return self.last_read_bytes.slice();
+            return self.prev_bytes.slice();
         }
 
-        fn read(self: *@This(), buf: []u8) InnerReader.Error!usize {
+        fn read(self: *@This(), buf: []u8) ReadError!usize {
             const slice = buf[0..try self.inner_reader.read(buf)];
-            self.last_read_bytes.appendSlice(slice) catch unreachable;
+            try self.prev_bytes.appendSlice(slice);
             return slice.len;
         }
     };
 }
 
-pub fn instrIterator(reader: anytype) InstrIterator(@TypeOf(reader)) {
+pub fn instrIterator(reader: anytype) InstrIterator(@TypeOf(reader), 32) {
     return .{ .inner_reader = reader };
 }
 
@@ -127,15 +129,6 @@ pub const Op = enum {
     xchg,
     xlat,
     xor,
-
-    // Prefixes.
-    rep,
-    repne,
-    lock,
-    @"cs:",
-    @"ds:",
-    @"es:",
-    @"ss:",
 };
 
 pub const Register = enum {
@@ -178,6 +171,11 @@ pub const Register = enum {
 pub const Instr = struct {
     op: Op,
     payload: Payload,
+    exclusive_prefix: ExclusivePrefix = .none,
+    seg_override_prefix: SegOverridePrefix = .none,
+
+    pub const ExclusivePrefix = enum { none, lock, rep, repne };
+    pub const SegOverridePrefix = enum { none, @"cs:", @"ds:", @"es:", @"ss:" };
 
     pub const Payload = union(enum) {
         none,
@@ -194,9 +192,27 @@ pub const Instr = struct {
 };
 
 pub fn nextInstr(reader: anytype) !?Instr {
-    const first = reader.readByte() catch |err| switch (err) {
-        error.EndOfStream => return null,
-        else => return err,
+    var exclusive_prefix: Instr.ExclusivePrefix = .none;
+    var seg_override_prefix: Instr.SegOverridePrefix = .none;
+    const first = while (true) {
+        const byte = reader.readByte() catch |err| switch (err) {
+            error.EndOfStream => return if (exclusive_prefix != .none or seg_override_prefix != .none)
+                err
+            else
+                null,
+            else => return err,
+        };
+
+        switch (byte) {
+            0x26 => seg_override_prefix = .@"es:",
+            0x2e => seg_override_prefix = .@"cs:",
+            0x36 => seg_override_prefix = .@"ss:",
+            0x3e => seg_override_prefix = .@"ds:",
+            0xf0 => exclusive_prefix = .lock,
+            0xf2 => exclusive_prefix = .repne,
+            0xf3 => exclusive_prefix = .rep,
+            else => break byte,
+        }
     };
 
     var second: ?u8 = null; // Need to read-ahead to identify some instructions.
@@ -208,16 +224,12 @@ pub fn nextInstr(reader: anytype) !?Instr {
         0x10...0x15 => .adc,
         0x18...0x1d => .sbb,
         0x20...0x25 => .@"and",
-        0x26 => .@"es:",
         0x27 => .daa,
         0x28...0x2d => .sub,
-        0x2e => .@"cs:",
         0x2f => .das,
         0x30...0x35 => .xor,
-        0x36 => .@"ss:",
         0x37 => .aaa,
         0x38...0x3d => .cmp,
-        0x3e => .@"ds:",
         0x3f => .aas,
         0x40...0x47 => .inc,
         0x48...0x4f => .dec,
@@ -325,9 +337,6 @@ pub fn nextInstr(reader: anytype) !?Instr {
         0xe4...0xe5, 0xec...0xed => .in,
         0xe6...0xe7, 0xee...0xef => .out,
         0xe9...0xeb => .jmp,
-        0xf0 => .lock,
-        0xf2 => .repne,
-        0xf3 => .rep,
         0xf4 => .hlt,
         0xf5 => .cmc,
 
@@ -440,7 +449,12 @@ pub fn nextInstr(reader: anytype) !?Instr {
         else => .none,
     };
 
-    return .{ .op = op, .payload = payload };
+    return .{
+        .op = op,
+        .payload = payload,
+        .exclusive_prefix = exclusive_prefix,
+        .seg_override_prefix = seg_override_prefix,
+    };
 }
 
 pub const ModInstr = struct {
@@ -622,6 +636,12 @@ test InstrIterator {
         var it = instrIterator(stream.reader());
         try std.testing.expectError(error.EndOfStream, it.next());
         try std.testing.expectEqualSlices(u8, &.{0x80}, it.getPrevBytes());
+    }
+    {
+        var stream = std.io.fixedBufferStream("\xf0");
+        var it = instrIterator(stream.reader());
+        try std.testing.expectError(error.EndOfStream, it.next());
+        try std.testing.expectEqualSlices(u8, &.{0xf0}, it.getPrevBytes());
     }
     {
         var stream = std.io.fixedBufferStream("\xd9\x13");
@@ -1194,27 +1214,17 @@ test "0042: completionist decode" {
     try testAndOrXor(reader, .@"or");
     try testAndOrXor(reader, .xor);
 
-    try testing.expectEqual(Instr{ .op = .rep, .payload = .none }, (try nextInstr(reader)).?);
-    try testing.expectEqual(Instr{ .op = .movsb, .payload = .none }, (try nextInstr(reader)).?);
-    try testing.expectEqual(Instr{ .op = .rep, .payload = .none }, (try nextInstr(reader)).?);
-    try testing.expectEqual(Instr{ .op = .cmpsb, .payload = .none }, (try nextInstr(reader)).?);
-    try testing.expectEqual(Instr{ .op = .rep, .payload = .none }, (try nextInstr(reader)).?);
-    try testing.expectEqual(Instr{ .op = .scasb, .payload = .none }, (try nextInstr(reader)).?);
-    try testing.expectEqual(Instr{ .op = .rep, .payload = .none }, (try nextInstr(reader)).?);
-    try testing.expectEqual(Instr{ .op = .lodsb, .payload = .none }, (try nextInstr(reader)).?);
-    try testing.expectEqual(Instr{ .op = .rep, .payload = .none }, (try nextInstr(reader)).?);
-    try testing.expectEqual(Instr{ .op = .movsw, .payload = .none }, (try nextInstr(reader)).?);
-    try testing.expectEqual(Instr{ .op = .rep, .payload = .none }, (try nextInstr(reader)).?);
-    try testing.expectEqual(Instr{ .op = .cmpsw, .payload = .none }, (try nextInstr(reader)).?);
-    try testing.expectEqual(Instr{ .op = .rep, .payload = .none }, (try nextInstr(reader)).?);
-    try testing.expectEqual(Instr{ .op = .scasw, .payload = .none }, (try nextInstr(reader)).?);
-    try testing.expectEqual(Instr{ .op = .rep, .payload = .none }, (try nextInstr(reader)).?);
-    try testing.expectEqual(Instr{ .op = .lodsw, .payload = .none }, (try nextInstr(reader)).?);
+    try testing.expectEqual(Instr{ .op = .movsb, .payload = .none, .exclusive_prefix = .rep }, (try nextInstr(reader)).?);
+    try testing.expectEqual(Instr{ .op = .cmpsb, .payload = .none, .exclusive_prefix = .rep }, (try nextInstr(reader)).?);
+    try testing.expectEqual(Instr{ .op = .scasb, .payload = .none, .exclusive_prefix = .rep }, (try nextInstr(reader)).?);
+    try testing.expectEqual(Instr{ .op = .lodsb, .payload = .none, .exclusive_prefix = .rep }, (try nextInstr(reader)).?);
+    try testing.expectEqual(Instr{ .op = .movsw, .payload = .none, .exclusive_prefix = .rep }, (try nextInstr(reader)).?);
+    try testing.expectEqual(Instr{ .op = .cmpsw, .payload = .none, .exclusive_prefix = .rep }, (try nextInstr(reader)).?);
+    try testing.expectEqual(Instr{ .op = .scasw, .payload = .none, .exclusive_prefix = .rep }, (try nextInstr(reader)).?);
+    try testing.expectEqual(Instr{ .op = .lodsw, .payload = .none, .exclusive_prefix = .rep }, (try nextInstr(reader)).?);
 
-    try testing.expectEqual(Instr{ .op = .rep, .payload = .none }, (try nextInstr(reader)).?);
-    try testing.expectEqual(Instr{ .op = .stosb, .payload = .none }, (try nextInstr(reader)).?);
-    try testing.expectEqual(Instr{ .op = .rep, .payload = .none }, (try nextInstr(reader)).?);
-    try testing.expectEqual(Instr{ .op = .stosw, .payload = .none }, (try nextInstr(reader)).?);
+    try testing.expectEqual(Instr{ .op = .stosb, .payload = .none, .exclusive_prefix = .rep }, (try nextInstr(reader)).?);
+    try testing.expectEqual(Instr{ .op = .stosw, .payload = .none, .exclusive_prefix = .rep }, (try nextInstr(reader)).?);
 
     try testExpectModSpecialInstr(.call, .{ .addr = .{ .off = 39201 } }, .none, true, try nextInstr(reader));
     try testExpectModSpecialInstr(
@@ -1283,48 +1293,117 @@ test "0042: completionist decode" {
     try testing.expectEqual(Instr{ .op = .hlt, .payload = .none }, (try nextInstr(reader)).?);
     try testing.expectEqual(Instr{ .op = .wait, .payload = .none }, (try nextInstr(reader)).?);
 
-    try testing.expectEqual(Instr{ .op = .lock, .payload = .none }, (try nextInstr(reader)).?);
-    try testExpectModSpecialInstr(.not, .{ .addr = .{ .regs = .bp, .off = 9905 } }, .none, false, try nextInstr(reader));
-    try testing.expectEqual(Instr{ .op = .lock, .payload = .none }, (try nextInstr(reader)).?);
-    try testExpectModInstr(.xchg, .{ .reg = .al }, .{ .addr = .{ .off = 100 } }, try nextInstr(reader));
+    try testExpectPrefixedModSpecialInstr(
+        .not,
+        .{ .addr = .{ .regs = .bp, .off = 9905 } },
+        .none,
+        false,
+        .lock,
+        .none,
+        try nextInstr(reader),
+    );
+    try testExpectPrefixedModInstr(
+        .xchg,
+        .{ .reg = .al },
+        .{ .addr = .{ .off = 100 } },
+        .lock,
+        .none,
+        try nextInstr(reader),
+    );
 
-    try testing.expectEqual(Instr{ .op = .@"cs:", .payload = .none }, (try nextInstr(reader)).?);
-    try testExpectModInstr(.mov, .{ .reg = .al }, .{ .addr = .{ .regs = .@"bx+si" } }, try nextInstr(reader));
-    try testing.expectEqual(Instr{ .op = .@"ds:", .payload = .none }, (try nextInstr(reader)).?);
-    try testExpectModInstr(.mov, .{ .reg = .bx }, .{ .addr = .{ .regs = .@"bp+di" } }, try nextInstr(reader));
-    try testing.expectEqual(Instr{ .op = .@"es:", .payload = .none }, (try nextInstr(reader)).?);
-    try testExpectModInstr(.mov, .{ .reg = .dx }, .{ .addr = .{ .regs = .bp } }, try nextInstr(reader));
-    try testing.expectEqual(Instr{ .op = .@"ss:", .payload = .none }, (try nextInstr(reader)).?);
-    try testExpectModInstr(.mov, .{ .reg = .ah }, .{ .addr = .{ .regs = .@"bx+si", .off = 4 } }, try nextInstr(reader));
+    try testExpectPrefixedModInstr(
+        .mov,
+        .{ .reg = .al },
+        .{ .addr = .{ .regs = .@"bx+si" } },
+        .none,
+        .@"cs:",
+        try nextInstr(reader),
+    );
+    try testExpectPrefixedModInstr(
+        .mov,
+        .{ .reg = .bx },
+        .{ .addr = .{ .regs = .@"bp+di" } },
+        .none,
+        .@"ds:",
+        try nextInstr(reader),
+    );
+    try testExpectPrefixedModInstr(
+        .mov,
+        .{ .reg = .dx },
+        .{ .addr = .{ .regs = .bp } },
+        .none,
+        .@"es:",
+        try nextInstr(reader),
+    );
+    try testExpectPrefixedModInstr(
+        .mov,
+        .{ .reg = .ah },
+        .{ .addr = .{ .regs = .@"bx+si", .off = 4 } },
+        .none,
+        .@"ss:",
+        try nextInstr(reader),
+    );
 
-    try testing.expectEqual(Instr{ .op = .@"ss:", .payload = .none }, (try nextInstr(reader)).?);
-    try testExpectModInstr(.@"and", .{ .addr = .{ .regs = .@"bp+si", .off = 10 } }, .{ .reg = .ch }, try nextInstr(reader));
-    try testing.expectEqual(Instr{ .op = .@"ds:", .payload = .none }, (try nextInstr(reader)).?);
-    try testExpectModInstr(.@"or", .{ .addr = .{ .regs = .@"bx+di", .off = 1000 } }, .{ .reg = .dx }, try nextInstr(reader));
-    try testing.expectEqual(Instr{ .op = .@"es:", .payload = .none }, (try nextInstr(reader)).?);
-    try testExpectModInstr(.xor, .{ .reg = .bx }, .{ .addr = .{ .regs = .bp } }, try nextInstr(reader));
-    try testing.expectEqual(Instr{ .op = .@"es:", .payload = .none }, (try nextInstr(reader)).?);
-    try testExpectModInstr(.cmp, .{ .reg = .cx }, .{ .addr = .{ .off = 4384 } }, try nextInstr(reader));
-    try testing.expectEqual(Instr{ .op = .@"cs:", .payload = .none }, (try nextInstr(reader)).?);
-    try testExpectModSpecialInstr(
+    try testExpectPrefixedModInstr(
+        .@"and",
+        .{ .addr = .{ .regs = .@"bp+si", .off = 10 } },
+        .{ .reg = .ch },
+        .none,
+        .@"ss:",
+        try nextInstr(reader),
+    );
+    try testExpectPrefixedModInstr(
+        .@"or",
+        .{ .addr = .{ .regs = .@"bx+di", .off = 1000 } },
+        .{ .reg = .dx },
+        .none,
+        .@"ds:",
+        try nextInstr(reader),
+    );
+    try testExpectPrefixedModInstr(
+        .xor,
+        .{ .reg = .bx },
+        .{ .addr = .{ .regs = .bp } },
+        .none,
+        .@"es:",
+        try nextInstr(reader),
+    );
+    try testExpectPrefixedModInstr(
+        .cmp,
+        .{ .reg = .cx },
+        .{ .addr = .{ .off = 4384 } },
+        .none,
+        .@"es:",
+        try nextInstr(reader),
+    );
+    try testExpectPrefixedModSpecialInstr(
         .@"test",
         .{ .addr = .{ .regs = .bp, .off = @bitCast(u8, @as(i8, -39)) } },
         .{ .uimm = 239 },
         false,
+        .none,
+        .@"cs:",
         try nextInstr(reader),
     );
-    try testing.expectEqual(Instr{ .op = .@"cs:", .payload = .none }, (try nextInstr(reader)).?);
-    try testExpectModSpecialInstr(
+    try testExpectPrefixedModSpecialInstr(
         .sbb,
         .{ .addr = .{ .regs = .@"bx+si", .off = @bitCast(u16, @as(i16, -4332)) } },
         .{ .uimm = 10328 },
         true,
+        .none,
+        .@"cs:",
         try nextInstr(reader),
     );
 
-    try testing.expectEqual(Instr{ .op = .lock, .payload = .none }, (try nextInstr(reader)).?);
-    try testing.expectEqual(Instr{ .op = .@"cs:", .payload = .none }, (try nextInstr(reader)).?);
-    try testExpectModSpecialInstr(.not, .{ .addr = .{ .regs = .bp, .off = 9905 } }, .none, false, try nextInstr(reader));
+    try testExpectPrefixedModSpecialInstr(
+        .not,
+        .{ .addr = .{ .regs = .bp, .off = 9905 } },
+        .none,
+        false,
+        .lock,
+        .@"cs:",
+        try nextInstr(reader),
+    );
 
     try testing.expectEqual(
         Instr{ .op = .call, .payload = .{ .interseg_addr = .{ .cs = 123, .addr = 456 } } },
@@ -1373,14 +1452,41 @@ test "0042: completionist decode" {
 }
 
 fn testExpectModInstr(op: Op, dst: ModOperand, src: ModOperand, instr: ?Instr) !void {
+    return testExpectPrefixedModInstr(op, dst, src, .none, .none, instr);
+}
+
+fn testExpectPrefixedModInstr(
+    op: Op,
+    dst: ModOperand,
+    src: ModOperand,
+    exclusive_prefix: Instr.ExclusivePrefix,
+    seg_override_prefix: Instr.SegOverridePrefix,
+    instr: ?Instr,
+) !void {
     try testing.expectEqual(op, instr.?.op);
     try testing.expectEqualDeep(dst, instr.?.payload.mod.getDst());
     try testing.expectEqualDeep(src, instr.?.payload.mod.getSrc());
+    try testing.expectEqual(exclusive_prefix, instr.?.exclusive_prefix);
+    try testing.expectEqual(seg_override_prefix, instr.?.seg_override_prefix);
 }
 
 fn testExpectModSpecialInstr(op: Op, dst: ModOperand, src: ModSpecialInstr.SrcOperand, w: bool, instr: ?Instr) !void {
+    return testExpectPrefixedModSpecialInstr(op, dst, src, w, .none, .none, instr);
+}
+
+fn testExpectPrefixedModSpecialInstr(
+    op: Op,
+    dst: ModOperand,
+    src: ModSpecialInstr.SrcOperand,
+    w: bool,
+    exclusive_prefix: Instr.ExclusivePrefix,
+    seg_override_prefix: Instr.SegOverridePrefix,
+    instr: ?Instr,
+) !void {
     try testing.expectEqual(op, instr.?.op);
     try testing.expectEqualDeep(ModSpecialInstr{ .dst = dst, .src = src, .w = w }, instr.?.payload.mod_special);
+    try testing.expectEqual(exclusive_prefix, instr.?.exclusive_prefix);
+    try testing.expectEqual(seg_override_prefix, instr.?.seg_override_prefix);
 }
 
 fn testExpectDataInstr(op: Op, reg: Register, imm: u16, instr: ?Instr) !void {
