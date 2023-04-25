@@ -11,13 +11,14 @@ pub fn disasm(instr_it: anytype, raw_writer: anytype, min_comment_pad: u64) !voi
 
     while (try instr_it.next()) |instr| {
         counting_writer.bytes_written = 0;
+        if (instr.exclusive_prefix != .none) try writer.print("{s} ", .{@tagName(instr.exclusive_prefix)});
         try writer.writeAll(@tagName(instr.op));
 
         switch (instr.payload) {
             .mod => |mod| {
-                try printModOperand(writer, mod.getDst());
+                try printModOperand(writer, mod.getDst(), instr.seg_override_prefix);
                 try writer.writeByte(',');
-                try printModOperand(writer, mod.getSrc());
+                try printModOperand(writer, mod.getSrc(), instr.seg_override_prefix);
             },
 
             .mod_special => |mod_special| {
@@ -27,7 +28,7 @@ pub fn disasm(instr_it: anytype, raw_writer: anytype, min_comment_pad: u64) !voi
                         else => try writer.print(" {s} PTR", .{if (mod_special.w) "WORD" else "BYTE"}),
                     }
                 }
-                try printModOperand(writer, mod_special.dst);
+                try printModOperand(writer, mod_special.dst, instr.seg_override_prefix);
                 switch (mod_special.src) {
                     .uimm => |uimm| try writer.print(", 0x{x}", .{uimm}),
                     .simm => |simm| try writer.print(", {s}0x{x}", .{ if (simm < 0) "-" else "", std.math.absCast(simm) }),
@@ -39,7 +40,10 @@ pub fn disasm(instr_it: anytype, raw_writer: anytype, min_comment_pad: u64) !voi
             .addr => |addr| inline for (.{ addr.getDst(), addr.getSrc() }, 0..) |operand, i| {
                 switch (operand) {
                     .reg => |reg| try writer.print(" {s}", .{@tagName(reg)}),
-                    .addr => |a| try writer.print(" [0x{x}]", .{a}),
+                    .addr => |a| try writer.print(
+                        " {s}[0x{x}]",
+                        .{ if (instr.seg_override_prefix != .none) @tagName(instr.seg_override_prefix) else "", a },
+                    ),
                 }
                 if (i == 0) try writer.writeByte(',');
             },
@@ -61,11 +65,18 @@ pub fn disasm(instr_it: anytype, raw_writer: anytype, min_comment_pad: u64) !voi
     }
 }
 
-fn printModOperand(writer: anytype, operand: decode.ModOperand) !void {
+fn printModOperand(
+    writer: anytype,
+    operand: decode.ModOperand,
+    seg_override_prefix: decode.Instr.SegOverridePrefix,
+) !void {
     switch (operand) {
         .reg => |reg| try writer.print(" {s}", .{@tagName(reg)}),
         .addr => |ea| {
-            try writer.print(" [{s}", .{if (ea.regs != .none) @tagName(ea.regs) else ""});
+            try writer.print(" {s}[{s}", .{
+                if (seg_override_prefix != .none) @tagName(seg_override_prefix) else "",
+                if (ea.regs != .none) @tagName(ea.regs) else "",
+            });
             if (ea.off != 0) try writer.print("{s}0x{x}", .{ if (ea.regs != .none) "+" else "", ea.off });
             try writer.writeByte(']');
         },
@@ -110,7 +121,7 @@ fn disasmOrLogErr(reader: anytype, buffered_writer: anytype, name: []const u8) !
 
         log.err("Failed to disassemble {s}: {!}", .{ name, err });
         if (it.getPrevBytes().len > 0) {
-            var buf: [" 0xXX".len * 6]u8 = undefined;
+            var buf: [" 0xXX".len * @TypeOf(it).prev_bytes_capacity]u8 = undefined;
             var buf_stream = std.io.fixedBufferStream(&buf);
             for (it.getPrevBytes()) |b| buf_stream.writer().print(" 0x{x:0>2}", .{b}) catch unreachable;
             log.err("(while decoding bytes: {{{s} }})", .{buf_stream.getWritten()});
@@ -135,7 +146,6 @@ test "0042: completionist decode" {
     var output = std.ArrayList(u8).init(testing.allocator);
     defer output.deinit();
     try disasm(&it, output.writer(), 42);
-    // TODO: handle prefixes properly.
     try testing.expectEqualStrings(
         \\bits 16
         \\mov si, bx                                  ; 89 de (mod)
@@ -400,26 +410,16 @@ test "0042: completionist decode" {
         \\xor cx, [0x1120]                            ; 33 0e 20 11 (mod)
         \\xor BYTE PTR [bp+0xd9], 0xef                ; 80 76 d9 ef (mod_special)
         \\xor WORD PTR [bx+si+0xef14], 0x2858         ; 81 b0 14 ef 58 28 (mod_special)
-        \\rep                                         ; f3 (none)
-        \\movsb                                       ; a4 (none)
-        \\rep                                         ; f3 (none)
-        \\cmpsb                                       ; a6 (none)
-        \\rep                                         ; f3 (none)
-        \\scasb                                       ; ae (none)
-        \\rep                                         ; f3 (none)
-        \\lodsb                                       ; ac (none)
-        \\rep                                         ; f3 (none)
-        \\movsw                                       ; a5 (none)
-        \\rep                                         ; f3 (none)
-        \\cmpsw                                       ; a7 (none)
-        \\rep                                         ; f3 (none)
-        \\scasw                                       ; af (none)
-        \\rep                                         ; f3 (none)
-        \\lodsw                                       ; ad (none)
-        \\rep                                         ; f3 (none)
-        \\stosb                                       ; aa (none)
-        \\rep                                         ; f3 (none)
-        \\stosw                                       ; ab (none)
+        \\rep movsb                                   ; f3 a4 (none)
+        \\rep cmpsb                                   ; f3 a6 (none)
+        \\rep scasb                                   ; f3 ae (none)
+        \\rep lodsb                                   ; f3 ac (none)
+        \\rep movsw                                   ; f3 a5 (none)
+        \\rep cmpsw                                   ; f3 a7 (none)
+        \\rep scasw                                   ; f3 af (none)
+        \\rep lodsw                                   ; f3 ad (none)
+        \\rep stosb                                   ; f3 aa (none)
+        \\rep stosw                                   ; f3 ab (none)
         \\call [0x9921]                               ; ff 16 21 99 (mod_special)
         \\call [bp+0x9c]                              ; ff 56 9c (mod_special)
         \\call sp                                     ; ff d4 (mod_special)
@@ -464,33 +464,19 @@ test "0042: completionist decode" {
         \\sti                                         ; fb (none)
         \\hlt                                         ; f4 (none)
         \\wait                                        ; 9b (none)
-        \\lock                                        ; f0 (none)
-        \\not BYTE PTR [bp+0x26b1]                    ; f6 96 b1 26 (mod_special)
-        \\lock                                        ; f0 (none)
-        \\xchg al, [0x64]                             ; 86 06 64 00 (mod)
-        \\cs:                                         ; 2e (none)
-        \\mov al, [bx+si]                             ; 8a 00 (mod)
-        \\ds:                                         ; 3e (none)
-        \\mov bx, [bp+di]                             ; 8b 1b (mod)
-        \\es:                                         ; 26 (none)
-        \\mov dx, [bp]                                ; 8b 56 00 (mod)
-        \\ss:                                         ; 36 (none)
-        \\mov ah, [bx+si+0x4]                         ; 8a 60 04 (mod)
-        \\ss:                                         ; 36 (none)
-        \\and [bp+si+0xa], ch                         ; 20 6a 0a (mod)
-        \\ds:                                         ; 3e (none)
-        \\or [bx+di+0x3e8], dx                        ; 09 91 e8 03 (mod)
-        \\es:                                         ; 26 (none)
-        \\xor bx, [bp]                                ; 33 5e 00 (mod)
-        \\es:                                         ; 26 (none)
-        \\cmp cx, [0x1120]                            ; 3b 0e 20 11 (mod)
-        \\cs:                                         ; 2e (none)
-        \\test BYTE PTR [bp+0xd9], 0xef               ; f6 46 d9 ef (mod_special)
-        \\cs:                                         ; 2e (none)
-        \\sbb WORD PTR [bx+si+0xef14], 0x2858         ; 81 98 14 ef 58 28 (mod_special)
-        \\lock                                        ; f0 (none)
-        \\cs:                                         ; 2e (none)
-        \\not BYTE PTR [bp+0x26b1]                    ; f6 96 b1 26 (mod_special)
+        \\lock not BYTE PTR [bp+0x26b1]               ; f0 f6 96 b1 26 (mod_special)
+        \\lock xchg al, [0x64]                        ; f0 86 06 64 00 (mod)
+        \\mov al, cs:[bx+si]                          ; 2e 8a 00 (mod)
+        \\mov bx, ds:[bp+di]                          ; 3e 8b 1b (mod)
+        \\mov dx, es:[bp]                             ; 26 8b 56 00 (mod)
+        \\mov ah, ss:[bx+si+0x4]                      ; 36 8a 60 04 (mod)
+        \\and ss:[bp+si+0xa], ch                      ; 36 20 6a 0a (mod)
+        \\or ds:[bx+di+0x3e8], dx                     ; 3e 09 91 e8 03 (mod)
+        \\xor bx, es:[bp]                             ; 26 33 5e 00 (mod)
+        \\cmp cx, es:[0x1120]                         ; 26 3b 0e 20 11 (mod)
+        \\test BYTE PTR cs:[bp+0xd9], 0xef            ; 2e f6 46 d9 ef (mod_special)
+        \\sbb WORD PTR cs:[bx+si+0xef14], 0x2858      ; 2e 81 98 14 ef 58 28 (mod_special)
+        \\lock not BYTE PTR cs:[bp+0x26b1]            ; f0 2e f6 96 b1 26 (mod_special)
         \\call 0x7b:0x1c8                             ; 9a c8 01 7b 00 (interseg_addr)
         \\jmp 0x315:0x22                              ; ea 22 00 15 03 (interseg_addr)
         \\mov [bx+si+0x3b], es                        ; 8c 40 3b (mod)
