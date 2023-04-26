@@ -458,6 +458,7 @@ pub fn nextInstr(reader: anytype) !?Instr {
 }
 
 pub const ModInstr = struct {
+    w: bool,
     d: bool,
     reg: Register,
     operand: ModOperand,
@@ -485,20 +486,20 @@ pub const ModInstr = struct {
         };
         const operand = try ModOperand.decode(reader, mod, rm, info.w);
 
-        return .{ .d = info.d, .reg = reg, .operand = operand };
+        return .{ .w = info.w, .d = info.d, .reg = reg, .operand = operand };
     }
 };
 
 pub const ModSpecialInstr = struct {
+    w: bool,
     dst: ModOperand,
     src: SrcOperand,
-    w: bool,
 
     pub const SrcOperand = union(enum) {
         none,
         cl,
         uimm: u16,
-        simm: i16,
+        simm: i8,
     };
 
     fn decode(reader: anytype, first: u8, second: u8) !ModSpecialInstr {
@@ -574,7 +575,7 @@ pub const EffectiveAddr = struct {
 };
 
 pub const DataInstr = struct {
-    reg: Register,
+    dst_reg: Register,
     imm: u16,
 
     fn decode(reader: anytype, first: u8) !DataInstr {
@@ -591,15 +592,15 @@ pub const DataInstr = struct {
         };
 
         return .{
-            .reg = Register.getGeneralPurpose(info.reg, info.regw),
+            .dst_reg = Register.getGeneralPurpose(info.reg, info.regw),
             .imm = if (info.dataw) try reader.readIntLittle(u16) else try reader.readByte(),
         };
     }
 };
 
 pub const AddrInstr = struct {
+    w: bool,
     d: bool,
-    reg: Register,
     addr: u16,
 
     pub const Operand = union(enum) {
@@ -608,18 +609,19 @@ pub const AddrInstr = struct {
     };
 
     pub inline fn getDst(self: AddrInstr) Operand {
-        return if (self.d) .{ .addr = self.addr } else .{ .reg = self.reg };
+        return if (self.d) .{ .addr = self.addr } else .{ .reg = if (self.w) .ax else .al };
     }
 
     pub inline fn getSrc(self: AddrInstr) Operand {
-        return if (self.d) .{ .reg = self.reg } else .{ .addr = self.addr };
+        return if (self.d) .{ .reg = if (self.w) .ax else .al } else .{ .addr = self.addr };
     }
 
     fn decode(reader: anytype, first: u8) !AddrInstr {
-        const w = first & 1 == 1;
-        const d = (first >> 1) & 1 == 1;
-        const addr = try reader.readIntLittle(u16);
-        return .{ .d = d, .reg = if (w) .ax else .al, .addr = addr };
+        return .{
+            .w = first & 1 == 1,
+            .d = (first >> 1) & 1 == 1,
+            .addr = try reader.readIntLittle(u16),
+        };
     }
 };
 
@@ -1489,9 +1491,9 @@ fn testExpectPrefixedModSpecialInstr(
     try testing.expectEqual(seg_override_prefix, instr.?.seg_override_prefix);
 }
 
-fn testExpectDataInstr(op: Op, reg: Register, imm: u16, instr: ?Instr) !void {
+fn testExpectDataInstr(op: Op, dst_reg: Register, imm: u16, instr: ?Instr) !void {
     try testing.expectEqual(op, instr.?.op);
-    try testing.expectEqualDeep(DataInstr{ .reg = reg, .imm = imm }, instr.?.payload.data);
+    try testing.expectEqualDeep(DataInstr{ .dst_reg = dst_reg, .imm = imm }, instr.?.payload.data);
 }
 
 fn testExpectAddrInstr(op: Op, dst: AddrInstr.Operand, src: AddrInstr.Operand, instr: ?Instr) !void {

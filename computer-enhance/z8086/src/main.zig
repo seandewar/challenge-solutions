@@ -3,8 +3,14 @@ const testing = std.testing;
 const log = std.log;
 
 const decode = @import("decode.zig");
+const Sim = @import("Sim.zig");
 
-pub fn disasm(instr_it: anytype, raw_writer: anytype, min_comment_pad: u64) !void {
+const DisasmOptions = struct {
+    min_comment_pad: u64 = 42,
+    sim: ?*Sim = null,
+};
+
+fn disasm(instr_it: anytype, raw_writer: anytype, options: DisasmOptions) !void {
     try raw_writer.writeAll("bits 16\n");
     var counting_writer = std.io.countingWriter(raw_writer);
     const writer = counting_writer.writer();
@@ -48,7 +54,7 @@ pub fn disasm(instr_it: anytype, raw_writer: anytype, min_comment_pad: u64) !voi
                 if (i == 0) try writer.writeByte(',');
             },
 
-            .data => |data| try writer.print(" {s}, 0x{x}", .{ @tagName(data.reg), data.imm }),
+            .data => |data| try writer.print(" {s}, 0x{x}", .{ @tagName(data.dst_reg), data.imm }),
             .ip_off => |ip_off| try writer.print(" ${s}0x{x}", .{ if (ip_off >= 0) "+" else "-", std.math.absCast(ip_off) }),
             .interseg_addr => |interseg_addr| try writer.print(" 0x{x}:0x{x}", .{ interseg_addr.cs, interseg_addr.addr }),
             .regs => |regs| try writer.print(" {s}, {s}", .{ @tagName(regs.dst), @tagName(regs.src) }),
@@ -57,11 +63,24 @@ pub fn disasm(instr_it: anytype, raw_writer: anytype, min_comment_pad: u64) !voi
             .none => {},
         }
 
-        for (@min(min_comment_pad, counting_writer.bytes_written)..min_comment_pad) |_| try writer.writeByte(' ');
+        if (counting_writer.bytes_written < options.min_comment_pad) {
+            for (counting_writer.bytes_written..options.min_comment_pad) |_| try writer.writeByte(' ');
+        }
         try writer.writeAll("  ;");
         for (instr_it.getPrevBytes()) |b| try writer.print(" {x:0>2}", .{b});
         if (@import("builtin").mode == .Debug) try writer.print(" ({s})", .{@tagName(instr.payload)});
         try writer.writeByte('\n');
+
+        if (options.sim) |sim| {
+            sim.executeInstr(instr) catch |err| try writer.print("; Failed to simulate instruction: {!}\n", .{err});
+        }
+    }
+
+    if (options.sim) |sim| {
+        try writer.writeAll("\n; Final register values:\n");
+        inline for (@typeInfo(Sim).Struct.fields) |field| {
+            if (field.type == u16) try writer.print("; {s}: 0x{x:0>4}\n", .{ field.name, @field(sim, field.name) });
+        }
     }
 }
 
@@ -116,7 +135,8 @@ pub fn main() !u8 {
 fn disasmOrLogErr(reader: anytype, buffered_writer: anytype, name: []const u8) !void {
     var buffered_reader = std.io.bufferedReader(reader);
     var it = decode.instrIterator(buffered_reader.reader());
-    disasm(&it, buffered_writer.writer(), 42) catch |err| {
+    var sim = Sim{};
+    disasm(&it, buffered_writer.writer(), .{ .sim = &sim }) catch |err| {
         flushOrLogErr(buffered_writer);
 
         log.err("Failed to disassemble {s}: {!}", .{ name, err });
@@ -145,7 +165,7 @@ test "0042: completionist decode" {
 
     var output = std.ArrayList(u8).init(testing.allocator);
     defer output.deinit();
-    try disasm(&it, output.writer(), 42);
+    try disasm(&it, output.writer(), .{ .min_comment_pad = 42, .sim = null });
     try testing.expectEqualStrings(
         \\bits 16
         \\mov si, bx                                  ; 89 de (mod)

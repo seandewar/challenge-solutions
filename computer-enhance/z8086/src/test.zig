@@ -2,7 +2,7 @@ const std = @import("std");
 
 test {
     _ = @import("decode.zig");
-    _ = @import("disasm.zig");
+    _ = @import("main.zig");
 }
 
 pub fn testOpenListing(name: []const u8) !std.fs.File {
