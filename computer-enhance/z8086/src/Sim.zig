@@ -157,14 +157,8 @@ fn writeMemory(self: *Sim, addr: u16, w: bool, val: u16) Change {
 
 pub fn readRegister(self: Sim, reg: decode.Register) u16 {
     return switch (reg) {
-        .al => @truncate(u8, self.ax),
-        .cl => @truncate(u8, self.cx),
-        .dl => @truncate(u8, self.dx),
-        .bl => @truncate(u8, self.bx),
-        .ah => @truncate(u8, self.ax >> 8),
-        .ch => @truncate(u8, self.cx >> 8),
-        .dh => @truncate(u8, self.dx >> 8),
-        .bh => @truncate(u8, self.bx >> 8),
+        inline .al, .bl, .cl, .dl => |tag| @truncate(u8, @field(self, @tagName(tag)[0..1] ++ "x")),
+        inline .ah, .bh, .ch, .dh => |tag| @truncate(u8, @field(self, @tagName(tag)[0..1] ++ "x") >> 8),
         inline else => |tag| @field(self, @tagName(tag)),
     };
 }
@@ -179,14 +173,14 @@ fn writeRegister(self: *Sim, reg: decode.Register, val: u16) Change {
     };
 
     switch (reg) {
-        .al => self.ax = (self.ax & ~@as(u16, 0xff)) | @intCast(u8, val),
-        .bl => self.bx = (self.bx & ~@as(u16, 0xff)) | @intCast(u8, val),
-        .cl => self.cx = (self.cx & ~@as(u16, 0xff)) | @intCast(u8, val),
-        .dl => self.dx = (self.dx & ~@as(u16, 0xff)) | @intCast(u8, val),
-        .ah => self.ax = (self.ax & 0xff) | (@as(u16, @intCast(u8, val)) << 8),
-        .bh => self.bx = (self.bx & 0xff) | (@as(u16, @intCast(u8, val)) << 8),
-        .ch => self.cx = (self.cx & 0xff) | (@as(u16, @intCast(u8, val)) << 8),
-        .dh => self.dx = (self.dx & 0xff) | (@as(u16, @intCast(u8, val)) << 8),
+        inline .al, .bl, .cl, .dl => |tag| {
+            const wreg = &@field(self, @tagName(tag)[0..1] ++ "x");
+            wreg.* = (wreg.* & ~@as(u16, 0xff)) | @intCast(u8, val);
+        },
+        inline .ah, .bh, .ch, .dh => |tag| {
+            const wreg = &@field(self, @tagName(tag)[0..1] ++ "x");
+            wreg.* = (wreg.* & 0xff) | (@as(u16, @intCast(u8, val)) << 8);
+        },
         inline else => |tag| @field(self, @tagName(tag)) = val,
     }
 
