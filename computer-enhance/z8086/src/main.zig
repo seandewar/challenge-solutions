@@ -84,10 +84,12 @@ fn disasm(instr_it: anytype, raw_writer: anytype, options: DisasmOptions) !void 
                     "{s}: 0x{x} -> 0x{x}",
                     .{ @tagName(reg_change.reg), reg_change.old_val, sim.readRegister(reg_change.reg) },
                 ),
-                .mem => |mem_change| try writer.print(
-                    "[0x{x}]: 0x{x} -> 0x{x}",
-                    .{ mem_change.addr, mem_change.old_val, sim.readMemory(mem_change.addr, true) },
-                ),
+                inline .memb, .memw => |mem_change, tag| try writer.print("{s} PTR [0x{x}]: 0x{x} -> 0x{x}", .{
+                    if (tag == .memb) "BYTE" else "WIDE",
+                    mem_change.addr,
+                    mem_change.old_val,
+                    sim.readMemory(mem_change.addr, true),
+                }),
                 .none => unreachable,
             }
             try writer.writeAll(")\n");

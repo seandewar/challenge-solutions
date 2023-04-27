@@ -21,7 +21,8 @@ mem: [0x10000]u8 = .{0} ** 0x10000,
 pub const Change = union(enum) {
     none,
     reg: struct { reg: decode.Register, old_val: u16 },
-    mem: struct { addr: u16, old_val: u16 },
+    memb: struct { addr: u16, old_val: u8 },
+    memw: struct { addr: u16, old_val: u16 },
 };
 
 pub fn executeInstr(self: *Sim, instr: decode.Instr) !Change {
@@ -143,13 +144,15 @@ pub inline fn readMemory(self: Sim, addr: u16, w: bool) u16 {
 }
 
 fn writeMemory(self: *Sim, addr: u16, w: bool, val: u16) Change {
-    const old_val: u16 = if (w) std.mem.readIntSliceLittle(u16, self.mem[addr..]) else self.mem[addr];
     if (w) {
+        const old_val = std.mem.readIntSliceLittle(u16, self.mem[addr..]);
         std.mem.writeIntSliceLittle(u16, self.mem[addr..], val);
+        return .{ .memw = .{ .addr = addr, .old_val = old_val } };
     } else {
+        const old_val = self.mem[addr];
         self.mem[addr] = @intCast(u8, val);
+        return .{ .memb = .{ .addr = addr, .old_val = old_val } };
     }
-    return .{ .mem = .{ .addr = addr, .old_val = old_val } };
 }
 
 pub fn readRegister(self: Sim, reg: decode.Register) u16 {
