@@ -6,7 +6,7 @@ const decode = @import("decode.zig");
 const Sim = @import("Sim.zig");
 
 const DisasmOptions = struct {
-    min_comment_pad: u64 = 42,
+    max_comment_pad: u64 = 42,
     sim: ?*Sim = null,
 };
 
@@ -63,16 +63,34 @@ fn disasm(instr_it: anytype, raw_writer: anytype, options: DisasmOptions) !void 
             .none => {},
         }
 
-        if (counting_writer.bytes_written < options.min_comment_pad) {
-            for (counting_writer.bytes_written..options.min_comment_pad) |_| try writer.writeByte(' ');
-        }
+        const pad = @max(options.max_comment_pad, counting_writer.bytes_written);
+        for (counting_writer.bytes_written..pad) |_| try writer.writeByte(' ');
         try writer.writeAll("  ;");
         for (instr_it.getPrevBytes()) |b| try writer.print(" {x:0>2}", .{b});
         if (@import("builtin").mode == .Debug) try writer.print(" ({s})", .{@tagName(instr.payload)});
         try writer.writeByte('\n');
 
-        if (options.sim) |sim| {
-            sim.executeInstr(instr) catch |err| try writer.print("; Failed to simulate instruction: {!}\n", .{err});
+        if (options.sim) |sim| blk: {
+            const change = sim.executeInstr(instr) catch |err| {
+                try writer.print("; Failed to simulate instruction: {!}\n", .{err});
+                break :blk;
+            };
+            if (change == .none) break :blk;
+
+            for (0..pad) |_| try writer.writeByte(' ');
+            try writer.writeAll("  ; (");
+            switch (change) {
+                .reg => |reg_change| try writer.print(
+                    "{s}: 0x{x} -> 0x{x}",
+                    .{ @tagName(reg_change.reg), reg_change.old_val, sim.readRegister(reg_change.reg) },
+                ),
+                .mem => |mem_change| try writer.print(
+                    "[0x{x}]: 0x{x} -> 0x{x}",
+                    .{ mem_change.addr, mem_change.old_val, sim.readMemory(mem_change.addr, true) },
+                ),
+                .none => unreachable,
+            }
+            try writer.writeAll(")\n");
         }
     }
 
@@ -165,7 +183,7 @@ test "0042: completionist decode" {
 
     var output = std.ArrayList(u8).init(testing.allocator);
     defer output.deinit();
-    try disasm(&it, output.writer(), .{ .min_comment_pad = 42, .sim = null });
+    try disasm(&it, output.writer(), .{ .max_comment_pad = 42, .sim = null });
     try testing.expectEqualStrings(
         \\bits 16
         \\mov si, bx                                  ; 89 de (mod)

@@ -18,7 +18,13 @@ ss: u16 = 0,
 
 mem: [0x10000]u8 = .{0} ** 0x10000,
 
-pub fn executeInstr(self: *Sim, instr: decode.Instr) !void {
+pub const Change = union(enum) {
+    none,
+    reg: struct { reg: decode.Register, old_val: u16 },
+    mem: struct { addr: u16, old_val: u16 },
+};
+
+pub fn executeInstr(self: *Sim, instr: decode.Instr) !Change {
     const operands: struct { dst: Operand = .none, src: Operand = .none } = switch (instr.payload) {
         .mod => |mod| .{
             .dst = Operand.fromMod(mod.getDst(), mod.w),
@@ -50,14 +56,13 @@ pub fn executeInstr(self: *Sim, instr: decode.Instr) !void {
 
         .ip_off => |_| return error.UnsupportedInstr, // TODO
         .interseg_addr => |_| return error.UnsupportedInstr, // TODO
-
         .none => .{},
     };
 
-    switch (instr.op) {
+    return switch (instr.op) {
         .mov => self.writeOperand(operands.dst, self.readOperand(operands.src)),
-        else => return error.UnsupportedInstr,
-    }
+        else => error.UnsupportedInstr,
+    };
 }
 
 const Operand = union(enum) {
@@ -101,43 +106,53 @@ fn readOperand(self: Sim, operand: Operand) u16 {
     return switch (operand) {
         .reg => |reg| self.readRegister(reg),
         .imm => |imm| imm,
-
-        .effective_addr => |effective_addr| if (effective_addr.w)
-            std.mem.readIntSliceLittle(u16, self.mem[self.calcEffectiveAddr(effective_addr.ea)..])
-        else
-            std.mem.readIntSliceLittle(u8, self.mem[self.calcEffectiveAddr(effective_addr.ea)..]),
-
-        .addr_reg => |addr_reg| if (addr_reg.w)
-            std.mem.readIntSliceLittle(u16, self.mem[self.readRegister(addr_reg.reg)..])
-        else
-            std.mem.readIntSliceLittle(u8, self.mem[self.readRegister(addr_reg.reg)..]),
-
+        .effective_addr => |effective_addr| self.readMemory(
+            self.calcEffectiveAddr(effective_addr.ea),
+            effective_addr.w,
+        ),
+        .addr_reg => |addr_reg| self.readMemory(
+            self.readRegister(addr_reg.reg),
+            addr_reg.w,
+        ),
         .ip_off => |_| unreachable,
         .none => unreachable,
     };
 }
 
-fn writeOperand(self: *Sim, operand: Operand, val: u16) void {
+fn writeOperand(self: *Sim, operand: Operand, val: u16) Change {
     return switch (operand) {
         .reg => |reg| self.writeRegister(reg, val),
-
-        .effective_addr => |effective_addr| if (effective_addr.w)
-            std.mem.writeIntSliceLittle(u16, self.mem[self.calcEffectiveAddr(effective_addr.ea)..], val)
-        else
-            std.mem.writeIntSliceLittle(u8, self.mem[self.calcEffectiveAddr(effective_addr.ea)..], @intCast(u8, val)),
-
-        .addr_reg => |addr_reg| if (addr_reg.w)
-            std.mem.writeIntSliceLittle(u16, self.mem[self.readRegister(addr_reg.reg)..], val)
-        else
-            std.mem.writeIntSliceLittle(u8, self.mem[self.readRegister(addr_reg.reg)..], @intCast(u8, val)),
-
+        .effective_addr => |effective_addr| self.writeMemory(
+            self.calcEffectiveAddr(effective_addr.ea),
+            effective_addr.w,
+            val,
+        ),
+        .addr_reg => |addr_reg| self.writeMemory(
+            self.readRegister(addr_reg.reg),
+            addr_reg.w,
+            val,
+        ),
         .ip_off => |_| unreachable,
         .imm => |_| unreachable,
         .none => unreachable,
     };
 }
 
-fn readRegister(self: Sim, reg: decode.Register) u16 {
+pub inline fn readMemory(self: Sim, addr: u16, w: bool) u16 {
+    return if (w) std.mem.readIntSliceLittle(u16, self.mem[addr..]) else self.mem[addr];
+}
+
+fn writeMemory(self: *Sim, addr: u16, w: bool, val: u16) Change {
+    const old_val: u16 = if (w) std.mem.readIntSliceLittle(u16, self.mem[addr..]) else self.mem[addr];
+    if (w) {
+        std.mem.writeIntSliceLittle(u16, self.mem[addr..], val);
+    } else {
+        self.mem[addr] = @intCast(u8, val);
+    }
+    return .{ .mem = .{ .addr = addr, .old_val = old_val } };
+}
+
+pub fn readRegister(self: Sim, reg: decode.Register) u16 {
     return switch (reg) {
         .al => @truncate(u8, self.ax),
         .cl => @truncate(u8, self.cx),
@@ -151,18 +166,28 @@ fn readRegister(self: Sim, reg: decode.Register) u16 {
     };
 }
 
-fn writeRegister(self: *Sim, reg: decode.Register, val: u16) void {
-    return switch (reg) {
+fn writeRegister(self: *Sim, reg: decode.Register, val: u16) Change {
+    const change: Change = switch (reg) {
+        .al, .ah, .ax => .{ .reg = .{ .reg = .ax, .old_val = self.ax } },
+        .bl, .bh, .bx => .{ .reg = .{ .reg = .bx, .old_val = self.bx } },
+        .cl, .ch, .cx => .{ .reg = .{ .reg = .cx, .old_val = self.cx } },
+        .dl, .dh, .dx => .{ .reg = .{ .reg = .dx, .old_val = self.dx } },
+        inline else => |tag| .{ .reg = .{ .reg = tag, .old_val = @field(self, @tagName(tag)) } },
+    };
+
+    switch (reg) {
         .al => self.ax = (self.ax & ~@as(u16, 0xff)) | @intCast(u8, val),
+        .bl => self.bx = (self.bx & ~@as(u16, 0xff)) | @intCast(u8, val),
         .cl => self.cx = (self.cx & ~@as(u16, 0xff)) | @intCast(u8, val),
         .dl => self.dx = (self.dx & ~@as(u16, 0xff)) | @intCast(u8, val),
-        .bl => self.bx = (self.bx & ~@as(u16, 0xff)) | @intCast(u8, val),
         .ah => self.ax = (self.ax & 0xff) | (@as(u16, @intCast(u8, val)) << 8),
+        .bh => self.bx = (self.bx & 0xff) | (@as(u16, @intCast(u8, val)) << 8),
         .ch => self.cx = (self.cx & 0xff) | (@as(u16, @intCast(u8, val)) << 8),
         .dh => self.dx = (self.dx & 0xff) | (@as(u16, @intCast(u8, val)) << 8),
-        .bh => self.bx = (self.bx & 0xff) | (@as(u16, @intCast(u8, val)) << 8),
         inline else => |tag| @field(self, @tagName(tag)) = val,
-    };
+    }
+
+    return change;
 }
 
 // Following tests are based on the "Computer, Enhance!" perfaware listings:
@@ -174,6 +199,6 @@ test "0043: immediate movs" {
     defer file.close();
 
     var sim = Sim{};
-    while (try decode.nextInstr(file.reader())) |instr| try sim.executeInstr(instr);
+    while (try decode.nextInstr(file.reader())) |instr| _ = try sim.executeInstr(instr);
     try testing.expectEqual(Sim{ .ax = 1, .bx = 2, .cx = 3, .dx = 4, .sp = 5, .bp = 6, .si = 7, .di = 8 }, sim);
 }
