@@ -1,16 +1,74 @@
 const std = @import("std");
-const testing = std.testing;
 const log = std.log;
+const testing = std.testing;
 
 const decode = @import("decode.zig");
 const Sim = @import("Sim.zig");
+
+var stdout_buffered: std.io.BufferedWriter(4096, std.fs.File.Writer) = std.io.bufferedWriter(std.io.getStdOut().writer());
+const stdout = stdout_buffered.writer();
+
+inline fn flushStdOutOrLogErr() void {
+    stdout_buffered.flush() catch |err| log.err("Failed to flush output: {!}", .{err});
+}
+
+pub fn panic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
+    flushStdOutOrLogErr();
+    std.builtin.default_panic(msg, error_return_trace, ret_addr);
+}
+
+pub fn main() !u8 {
+    defer flushStdOutOrLogErr();
+
+    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
+    defer arena.deinit();
+    var args_it = try std.process.argsWithAllocator(arena.allocator());
+    defer args_it.deinit();
+    _ = args_it.skip(); // Skip executable path.
+
+    var file_i: usize = 0;
+    while (args_it.next()) |file_path| : (file_i += 1) {
+        const file = std.fs.cwd().openFile(file_path, .{}) catch |err| {
+            log.err("Failed to open file \"{s}\": {!}", .{ file_path, err });
+            return 1;
+        };
+        defer file.close();
+
+        if (file_i > 0) try stdout.writeByte('\n');
+        try stdout.print("; {s}\n", .{file_path});
+        disasmOrLogErr(file.reader(), file_path) catch return 1;
+    }
+    if (file_i == 0) {
+        disasmOrLogErr(std.io.getStdIn().reader(), "from standard input") catch return 1;
+    }
+
+    return 0;
+}
+
+fn disasmOrLogErr(reader: anytype, name: []const u8) !void {
+    var buffered_reader = std.io.bufferedReader(reader);
+    var it = decode.instrIterator(buffered_reader.reader());
+    var sim = Sim{};
+    disasm(&it, stdout, .{ .sim = &sim }) catch |err| {
+        flushStdOutOrLogErr();
+
+        log.err("Failed to disassemble {s}: {!}", .{ name, err });
+        if (it.getPrevBytes().len > 0) {
+            var buf: [" 0xXX".len * @TypeOf(it).prev_bytes_capacity]u8 = undefined;
+            var buf_stream = std.io.fixedBufferStream(&buf);
+            for (it.getPrevBytes()) |b| buf_stream.writer().print(" 0x{x:0>2}", .{b}) catch unreachable;
+            log.err("(while decoding bytes: {{{s} }})", .{buf_stream.getWritten()});
+        }
+        return err;
+    };
+}
 
 const DisasmOptions = struct {
     max_comment_pad: u64 = 42,
     sim: ?*Sim = null,
 };
 
-fn disasm(instr_it: anytype, raw_writer: anytype, options: DisasmOptions) !void {
+pub fn disasm(instr_it: anytype, raw_writer: anytype, options: DisasmOptions) !void {
     try raw_writer.writeAll("bits 16\n");
     var counting_writer = std.io.countingWriter(raw_writer);
     const writer = counting_writer.writer();
@@ -99,7 +157,7 @@ fn disasm(instr_it: anytype, raw_writer: anytype, options: DisasmOptions) !void 
     if (options.sim) |sim| {
         try writer.writeAll("\n; Final register values:\n");
         inline for (@typeInfo(Sim).Struct.fields) |field| {
-            if (field.type == u16) try writer.print("; {s}: 0x{x:0>4}\n", .{ field.name, @field(sim, field.name) });
+            if (field.type == u16) try writer.print(";   {s}: 0x{x:0>4}\n", .{ field.name, @field(sim, field.name) });
         }
     }
 }
@@ -120,58 +178,6 @@ fn printModOperand(
             try writer.writeByte(']');
         },
     }
-}
-
-pub fn main() !u8 {
-    var stdout_buffered = std.io.bufferedWriter(std.io.getStdOut().writer());
-    defer flushOrLogErr(&stdout_buffered);
-    const stdout = stdout_buffered.writer();
-
-    var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
-    defer arena.deinit();
-    var args_it = try std.process.argsWithAllocator(arena.allocator());
-    defer args_it.deinit();
-    _ = args_it.skip(); // Skip executable path.
-
-    var file_i: usize = 0;
-    while (args_it.next()) |file_path| : (file_i += 1) {
-        const file = std.fs.cwd().openFile(file_path, .{}) catch |err| {
-            log.err("Failed to open file \"{s}\": {!}", .{ file_path, err });
-            return 1;
-        };
-        defer file.close();
-
-        if (file_i > 0) try stdout.writeByte('\n');
-        try stdout.print("; {s}\n", .{file_path});
-        disasmOrLogErr(file.reader(), &stdout_buffered, file_path) catch return 1;
-    }
-    if (file_i == 0) {
-        disasmOrLogErr(std.io.getStdIn().reader(), &stdout_buffered, "from standard input") catch return 1;
-    }
-
-    return 0;
-}
-
-fn disasmOrLogErr(reader: anytype, buffered_writer: anytype, name: []const u8) !void {
-    var buffered_reader = std.io.bufferedReader(reader);
-    var it = decode.instrIterator(buffered_reader.reader());
-    var sim = Sim{};
-    disasm(&it, buffered_writer.writer(), .{ .sim = &sim }) catch |err| {
-        flushOrLogErr(buffered_writer);
-
-        log.err("Failed to disassemble {s}: {!}", .{ name, err });
-        if (it.getPrevBytes().len > 0) {
-            var buf: [" 0xXX".len * @TypeOf(it).prev_bytes_capacity]u8 = undefined;
-            var buf_stream = std.io.fixedBufferStream(&buf);
-            for (it.getPrevBytes()) |b| buf_stream.writer().print(" 0x{x:0>2}", .{b}) catch unreachable;
-            log.err("(while decoding bytes: {{{s} }})", .{buf_stream.getWritten()});
-        }
-        return err;
-    };
-}
-
-inline fn flushOrLogErr(buffered_writer: anytype) void {
-    buffered_writer.flush() catch |err| log.err("Failed to flush output: {!}", .{err});
 }
 
 // Following tests are based on the "Computer, Enhance!" perfaware listings:

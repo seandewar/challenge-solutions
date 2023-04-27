@@ -158,6 +158,16 @@ pub const Register = enum {
     ss,
     ds,
 
+    comptime {
+        // Order and value of fields are important to the getters!
+        const expected =
+            .{ "al", "cl", "dl", "bl", "ah", "ch", "dh", "bh", "ax", "cx", "dx", "bx", "sp", "bp", "si", "di", "es", "cs", "ss", "ds" };
+        for (@typeInfo(@This()).Enum.fields, expected, 0..) |info, name, val| {
+            std.debug.assert(std.mem.eql(u8, info.name, name));
+            std.debug.assert(info.value == val);
+        }
+    }
+
     // In honour of gpanders! 🫡
     inline fn getGeneralPurpose(reg: u3, w: bool) Register {
         return @intToEnum(Register, @enumToInt(Register.ax) * @boolToInt(w) + reg);
@@ -473,20 +483,25 @@ pub const ModInstr = struct {
 
     fn decode(reader: anytype, first: u8) !ModInstr {
         const info: struct { w: bool, d: bool } = switch (first) {
-            0x8d, 0xc4, 0xc5 => .{ .w = true, .d = true },
+            0x8c => .{ .w = true, .d = (first >> 1) & 1 == 1 },
+            0x8d, 0x8e, 0xc4, 0xc5 => .{ .w = true, .d = true },
             else => .{ .w = first & 1 == 1, .d = (first >> 1) & 1 == 1 },
         };
 
         const second = try reader.readByte();
         const mod = @intCast(u2, (second >> 6) & 0b11);
         const rm = @intCast(u3, second & 0b111);
-        const reg = switch (first) {
-            0x8c, 0x8e => Register.getSegment(@intCast(u2, (second >> 3) & 0b11)),
-            else => Register.getGeneralPurpose(@intCast(u3, (second >> 3) & 0b111), info.w),
+        const reg = @intCast(u3, (second >> 3) & 0b111);
+        const decoded_reg = switch (first) {
+            0x8c, 0x8e => if ((reg >> 2) & 1 == 0)
+                Register.getSegment(@intCast(u2, reg))
+            else
+                return error.UnknownInstr,
+            else => Register.getGeneralPurpose(reg, info.w),
         };
         const operand = try ModOperand.decode(reader, mod, rm, info.w);
 
-        return .{ .w = info.w, .d = info.d, .reg = reg, .operand = operand };
+        return .{ .w = info.w, .d = info.d, .reg = decoded_reg, .operand = operand };
     }
 };
 
@@ -560,6 +575,15 @@ pub const EffectiveAddr = struct {
         bp,
         bx,
         none,
+
+        comptime {
+            // Order and value of register fields are important to decode()!
+            const expected_regs = .{ "bx+si", "bx+di", "bp+si", "bp+di", "si", "di", "bp", "bx" };
+            for (@typeInfo(@This()).Enum.fields[0..expected_regs.len], expected_regs, 0..) |info, name, val| {
+                std.debug.assert(std.mem.eql(u8, info.name, name));
+                std.debug.assert(info.value == val);
+            }
+        }
     };
 
     fn decode(mod: u2, rm: u3, off: u16) EffectiveAddr {
