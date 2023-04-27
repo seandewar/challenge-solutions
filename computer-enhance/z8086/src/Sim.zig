@@ -11,10 +11,10 @@ sp: u16 = 0,
 bp: u16 = 0,
 si: u16 = 0,
 di: u16 = 0,
-cs: u16 = 0,
-ds: u16 = 0,
 es: u16 = 0,
 ss: u16 = 0,
+ds: u16 = 0,
+cs: u16 = 0,
 
 mem: [0x10000]u8 = .{0} ** 0x10000,
 
@@ -204,4 +204,25 @@ test "0044: register movs" {
     var sim = Sim{};
     while (try decode.nextInstr(file.reader())) |instr| _ = try sim.executeInstr(instr);
     try testing.expectEqual(Sim{ .ax = 4, .bx = 3, .cx = 2, .dx = 1, .sp = 1, .bp = 2, .si = 3, .di = 4 }, sim);
+}
+
+test "0045: challenge register movs" {
+    var file = try testOpenListing("0045_challenge_register_movs");
+    defer file.close();
+
+    var sim = Sim{};
+    while (try decode.nextInstr(file.reader())) |instr| _ = try sim.executeInstr(instr);
+    try testing.expectEqual(Sim{
+        .ax = 0x4411,
+        .bx = 0x3344,
+        .cx = 0x6677,
+        .dx = 0x7788,
+        .sp = 0x4411,
+        .bp = 0x3344,
+        .si = 0x6677,
+        .di = 0x7788,
+        .es = 0x6677,
+        .ss = 0x4411,
+        .ds = 0x3344,
+    }, sim);
 }
