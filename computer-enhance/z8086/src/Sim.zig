@@ -115,8 +115,7 @@ fn readOperand(self: Sim, operand: Operand) u16 {
             self.readRegister(addr_reg.reg),
             addr_reg.w,
         ),
-        .ip_off => |_| unreachable,
-        .none => unreachable,
+        .none, .ip_off => unreachable,
     };
 }
 
@@ -133,9 +132,7 @@ fn writeOperand(self: *Sim, operand: Operand, val: u16) Change {
             addr_reg.w,
             val,
         ),
-        .ip_off => |_| unreachable,
-        .imm => |_| unreachable,
-        .none => unreachable,
+        .none, .imm, .ip_off => unreachable,
     };
 }
 
@@ -198,4 +195,13 @@ test "0043: immediate movs" {
     var sim = Sim{};
     while (try decode.nextInstr(file.reader())) |instr| _ = try sim.executeInstr(instr);
     try testing.expectEqual(Sim{ .ax = 1, .bx = 2, .cx = 3, .dx = 4, .sp = 5, .bp = 6, .si = 7, .di = 8 }, sim);
+}
+
+test "0044: register movs" {
+    var file = try testOpenListing("0044_register_movs");
+    defer file.close();
+
+    var sim = Sim{};
+    while (try decode.nextInstr(file.reader())) |instr| _ = try sim.executeInstr(instr);
+    try testing.expectEqual(Sim{ .ax = 4, .bx = 3, .cx = 2, .dx = 1, .sp = 1, .bp = 2, .si = 3, .di = 4 }, sim);
 }
