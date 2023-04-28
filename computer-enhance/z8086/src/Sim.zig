@@ -16,7 +16,11 @@ ss: u16 = 0,
 ds: u16 = 0,
 cs: u16 = 0,
 
+flags: Flags = .{},
+
 mem: [0x10000]u8 = .{0} ** 0x10000,
+
+pub const Flags = std.EnumSet(enum { c, p, a, z, s, o, i, d, t });
 
 pub const Change = union(enum) {
     none,
@@ -26,7 +30,7 @@ pub const Change = union(enum) {
 };
 
 pub fn executeInstr(self: *Sim, instr: decode.Instr) !Change {
-    const operands: struct { dst: Operand = .none, src: Operand = .none } = switch (instr.payload) {
+    const operands: Operands = switch (instr.payload) {
         .mod => |mod| .{
             .dst = Operand.fromMod(mod.getDst(), mod.w),
             .src = Operand.fromMod(mod.getSrc(), mod.w),
@@ -55,16 +59,61 @@ pub fn executeInstr(self: *Sim, instr: decode.Instr) !Change {
         .reg => |reg| .{ .dst = .{ .reg = reg } },
         .imm => |imm| .{ .src = .{ .imm = imm } },
 
-        .ip_off => |_| return error.UnsupportedInstr, // TODO
-        .interseg_addr => |_| return error.UnsupportedInstr, // TODO
+        .ip_off, .interseg_addr => return error.UnsupportedInstr, // TODO
         .none => .{},
     };
 
     return switch (instr.op) {
         .mov => self.writeOperand(operands.dst, self.readOperand(operands.src)),
-        else => error.UnsupportedInstr,
+
+        .add, .sub, .cmp => blk: {
+            const a = self.readOperand(operands.dst);
+            const b = self.readOperand(operands.src);
+            const result: u16 = if (operands.isDstWide())
+                self.doAddSub(true, instr.op == .add, a, b)
+            else
+                self.doAddSub(false, instr.op == .add, @intCast(u8, a), @intCast(u8, b));
+
+            break :blk if (instr.op != .cmp) self.writeOperand(operands.dst, result) else .none;
+        },
+
+        else => return error.UnsupportedInstr,
     };
 }
+
+fn doAddSub(self: *Sim, comptime w: bool, add: bool, a: if (w) u16 else u8, b: @TypeOf(a)) @TypeOf(a) {
+    const result = if (add) @addWithOverflow(a, b) else @subWithOverflow(a, b);
+    self.flags.setPresent(.c, result[1] == 1);
+    self.flags.setPresent(.z, result[0] == 0);
+    self.flags.setPresent(.p, @popCount(result[0]) % 2 == 0);
+
+    const Signed = if (w) i16 else i8;
+    self.flags.setPresent(.s, @bitCast(Signed, result[0]) < 0);
+
+    const as = @bitCast(Signed, a);
+    const bs = @bitCast(Signed, b);
+    self.flags.setPresent(.o, (if (add) @addWithOverflow(as, bs) else @subWithOverflow(as, bs))[1] == 1);
+
+    const an = @truncate(u4, a);
+    const bn = @truncate(u4, b);
+    self.flags.setPresent(.a, (if (add) @addWithOverflow(an, bn) else @subWithOverflow(an, bn))[1] == 1);
+
+    return result[0];
+}
+
+const Operands = struct {
+    dst: Operand = .none,
+    src: Operand = .none,
+
+    fn isDstWide(self: Operands) bool {
+        return switch (self.dst) {
+            .reg => |reg| reg.isWide(),
+            .effective_addr => |effective_addr| effective_addr.w,
+            .addr_reg => |addr_reg| addr_reg.w,
+            else => unreachable,
+        };
+    }
+};
 
 const Operand = union(enum) {
     none,
@@ -224,5 +273,34 @@ test "0045: challenge register movs" {
         .es = 0x6677,
         .ss = 0x4411,
         .ds = 0x3344,
+    }, sim);
+}
+
+test "0046: add sub cmp" {
+    var file = try testOpenListing("0046_add_sub_cmp");
+    defer file.close();
+
+    var sim = Sim{};
+    while (try decode.nextInstr(file.reader())) |instr| _ = try sim.executeInstr(instr);
+    try testing.expectEqual(Sim{
+        .bx = 0xe102,
+        .cx = 0x0f01,
+        .sp = 0x03e6,
+        .flags = Flags.initMany(&.{ .p, .z }),
+    }, sim);
+}
+
+test "0047: challenge flags" {
+    var file = try testOpenListing("0047_challenge_flags");
+    defer file.close();
+
+    var sim = Sim{};
+    while (try decode.nextInstr(file.reader())) |instr| _ = try sim.executeInstr(instr);
+    try testing.expectEqual(Sim{
+        .bx = 0x9ca5,
+        .dx = 0x000a,
+        .sp = 0x0063,
+        .bp = 0x0062,
+        .flags = Flags.initMany(&.{ .c, .p, .a, .s }),
     }, sim);
 }

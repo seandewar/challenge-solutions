@@ -2,6 +2,7 @@ const std = @import("std");
 
 test {
     _ = @import("decode.zig");
+    _ = @import("Sim.zig");
     _ = @import("main.zig");
 }
 

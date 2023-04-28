@@ -41,7 +41,6 @@ pub fn main() !u8 {
     if (file_i == 0) {
         disasmOrLogErr(std.io.getStdIn().reader(), "from standard input") catch return 1;
     }
-
     return 0;
 }
 
@@ -128,36 +127,62 @@ pub fn disasm(instr_it: anytype, raw_writer: anytype, options: DisasmOptions) !v
         if (@import("builtin").mode == .Debug) try writer.print(" ({s})", .{@tagName(instr.payload)});
         try writer.writeByte('\n');
 
-        if (options.sim) |sim| blk: {
-            const change = sim.executeInstr(instr) catch |err| {
-                try writer.print("; Failed to simulate instruction: {!}\n", .{err});
-                break :blk;
-            };
-            if (change == .none) break :blk;
+        if (options.sim) |sim| print_sim: {
+            const old_flags = sim.flags;
+            print_change: {
+                const result = sim.executeInstr(instr);
+                if (result) |change| {
+                    if (change == .none) break :print_change;
+                } else |_| {} // Error is handled below.
 
-            for (0..pad) |_| try writer.writeByte(' ');
-            try writer.writeAll("  ; (");
-            switch (change) {
-                .reg => |reg_change| try writer.print(
-                    "{s}: 0x{x} -> 0x{x}",
-                    .{ @tagName(reg_change.reg), reg_change.old_val, sim.readRegister(reg_change.reg) },
-                ),
-                inline .memb, .memw => |mem_change, tag| try writer.print("{s} PTR [0x{x}]: 0x{x} -> 0x{x}", .{
-                    if (tag == .memb) "BYTE" else "WIDE",
-                    mem_change.addr,
-                    mem_change.old_val,
-                    sim.readMemory(mem_change.addr, true),
-                }),
-                .none => unreachable,
+                for (0..pad) |_| try writer.writeByte(' ');
+                try writer.writeAll("  ;    ");
+
+                if (result) |change| switch (change) {
+                    .reg => |reg| try writer.print(
+                        "{s}: 0x{x} -> 0x{x}\n",
+                        .{ @tagName(reg.reg), reg.old_val, sim.readRegister(reg.reg) },
+                    ),
+
+                    inline .memb, .memw => |mem, tag| try writer.print(
+                        "{s} PTR [0x{x}]: 0x{x} -> 0x{x}\n",
+                        .{
+                            if (tag == .memb) "BYTE" else "WIDE",
+                            mem.addr,
+                            mem.old_val,
+                            sim.readMemory(mem.addr, true),
+                        },
+                    ),
+
+                    .none => unreachable,
+                } else |err| {
+                    try writer.print("Simulation error: {s}\n", .{@errorName(err)});
+                    break :print_sim;
+                }
             }
-            try writer.writeAll(")\n");
+
+            if (!old_flags.eql(sim.flags)) {
+                for (0..pad) |_| try writer.writeByte(' ');
+                try writer.writeAll("  ;    flags: ");
+                try printFlags(writer, old_flags);
+                try writer.writeAll(" -> ");
+                try printFlags(writer, sim.flags);
+                try writer.writeByte('\n');
+            }
         }
     }
 
     if (options.sim) |sim| {
-        try writer.writeAll("\n; Final register values:\n");
+        try writer.writeAll("\n; Final (non-zero) register values:\n");
         inline for (@typeInfo(Sim).Struct.fields) |field| {
-            if (field.type == u16) try writer.print(";   {s}: 0x{x:0>4}\n", .{ field.name, @field(sim, field.name) });
+            if (field.type == u16 and @field(sim, field.name) != 0) {
+                try writer.print("; {s}: 0x{x:0>4}\n", .{ field.name, @field(sim, field.name) });
+            }
+        }
+        if (sim.flags.count() > 0) {
+            try writer.writeAll("; flags: ");
+            try printFlags(writer, sim.flags);
+            try writer.writeByte('\n');
         }
     }
 }
@@ -178,6 +203,12 @@ fn printModOperand(
             try writer.writeByte(']');
         },
     }
+}
+
+inline fn printFlags(writer: anytype, flags: Sim.Flags) !void {
+    if (flags.count() == 0) return writer.writeByte('_');
+    var flags_it = flags.iterator();
+    while (flags_it.next()) |flag| try writer.writeByte(std.ascii.toUpper(@tagName(flag)[0]));
 }
 
 // Following tests are based on the "Computer, Enhance!" perfaware listings:
