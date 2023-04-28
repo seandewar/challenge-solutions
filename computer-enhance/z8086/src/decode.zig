@@ -3,10 +3,10 @@ const testing = std.testing;
 
 const decode = @This();
 
-pub fn InstrIterator(comptime InnerReader: type, comptime prev_bytes_cap: usize) type {
+pub fn InstrIterator(comptime InnerReader: type, comptime max_instr_size: usize) type {
     return struct {
-        pub const prev_bytes_capacity = prev_bytes_cap;
-        prev_bytes: std.BoundedArray(u8, prev_bytes_cap) = .{},
+        pub const prev_bytes_capacity = max_instr_size;
+        prev_bytes: std.BoundedArray(u8, max_instr_size) = .{},
         inner_reader: InnerReader,
 
         const ReadError = InnerReader.Error || error{Overflow};

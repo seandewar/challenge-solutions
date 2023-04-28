@@ -15,12 +15,16 @@ es: u16 = 0,
 ss: u16 = 0,
 ds: u16 = 0,
 cs: u16 = 0,
+ip: u16 = 0,
 
 flags: Flags = .{},
 
-mem: [0x10000]u8 = .{0} ** 0x10000,
+mem: *Memory,
 
-pub const Flags = std.EnumSet(enum { c, p, a, z, s, o, i, d, t });
+pub const Flag = enum { c, p, a, z, s, o, i, d, t };
+pub const Flags = std.EnumSet(Flag);
+
+pub const Memory = [0x10000]u8;
 
 pub const Change = union(enum) {
     none,
@@ -29,7 +33,17 @@ pub const Change = union(enum) {
     memw: struct { addr: u16, old_val: u16 },
 };
 
-pub fn executeInstr(self: *Sim, instr: decode.Instr) !Change {
+pub fn step(self: *Sim) !struct { instr: ?decode.Instr, change: Change } {
+    var stream = std.io.FixedBufferStream(*Memory){ .buffer = self.mem, .pos = self.ip };
+    var it = decode.instrIterator(stream.reader());
+    const instr = (try it.next()) orelse return .{ .instr = null, .change = .none };
+    return .{
+        .instr = instr,
+        .change = try self.executeInstr(instr, @intCast(u16, it.getPrevBytes().len)),
+    };
+}
+
+fn executeInstr(self: *Sim, instr: decode.Instr, instr_size: u16) !Change {
     const operands: Operands = switch (instr.payload) {
         .mod => |mod| .{
             .dst = Operand.fromMod(mod.getDst(), mod.w),
@@ -40,10 +54,7 @@ pub fn executeInstr(self: *Sim, instr: decode.Instr) !Change {
             .dst = Operand.fromMod(mod_special.dst, mod_special.w),
             .src = switch (mod_special.src) {
                 .uimm => |uimm| .{ .imm = uimm },
-                .simm => |simm| .{ .imm = if (mod_special.w)
-                    @bitCast(u16, @as(i16, simm))
-                else
-                    @bitCast(u8, simm) },
+                .simm => |simm| .{ .imm = if (mod_special.w) @bitCast(u16, @as(i16, simm)) else @bitCast(u8, simm) },
                 .cl => .{ .reg = .cl },
                 .none => .none,
             },
@@ -63,7 +74,8 @@ pub fn executeInstr(self: *Sim, instr: decode.Instr) !Change {
         .none => .{},
     };
 
-    return switch (instr.op) {
+    const old_ip = self.ip;
+    const change = switch (instr.op) {
         .mov => self.writeOperand(operands.dst, self.readOperand(operands.src)),
 
         .add, .sub, .cmp => blk: {
@@ -79,6 +91,9 @@ pub fn executeInstr(self: *Sim, instr: decode.Instr) !Change {
 
         else => return error.UnsupportedInstr,
     };
+
+    if (old_ip == self.ip) self.ip +%= instr_size;
+    return change;
 }
 
 fn doAddSub(self: *Sim, comptime w: bool, add: bool, a: if (w) u16 else u8, b: @TypeOf(a)) @TypeOf(a) {
@@ -238,69 +253,122 @@ fn writeRegister(self: *Sim, reg: decode.Register, val: u16) Change {
 const testOpenListing = @import("test.zig").testOpenListing;
 
 test "0043: immediate movs" {
-    var file = try testOpenListing("0043_immediate_movs");
-    defer file.close();
-
-    var sim = Sim{};
-    while (try decode.nextInstr(file.reader())) |instr| _ = try sim.executeInstr(instr);
-    try testing.expectEqual(Sim{ .ax = 1, .bx = 2, .cx = 3, .dx = 4, .sp = 5, .bp = 6, .si = 7, .di = 8 }, sim);
+    try testExpectSim(
+        .{ .ax = 1, .bx = 2, .cx = 3, .dx = 4, .sp = 5, .bp = 6, .si = 7, .di = 8 },
+        try testRunSimListing("0043_immediate_movs"),
+    );
 }
 
 test "0044: register movs" {
-    var file = try testOpenListing("0044_register_movs");
-    defer file.close();
-
-    var sim = Sim{};
-    while (try decode.nextInstr(file.reader())) |instr| _ = try sim.executeInstr(instr);
-    try testing.expectEqual(Sim{ .ax = 4, .bx = 3, .cx = 2, .dx = 1, .sp = 1, .bp = 2, .si = 3, .di = 4 }, sim);
+    try testExpectSim(
+        .{ .ax = 4, .bx = 3, .cx = 2, .dx = 1, .sp = 1, .bp = 2, .si = 3, .di = 4 },
+        try testRunSimListing("0044_register_movs"),
+    );
 }
 
 test "0045: challenge register movs" {
-    var file = try testOpenListing("0045_challenge_register_movs");
-    defer file.close();
-
-    var sim = Sim{};
-    while (try decode.nextInstr(file.reader())) |instr| _ = try sim.executeInstr(instr);
-    try testing.expectEqual(Sim{
-        .ax = 0x4411,
-        .bx = 0x3344,
-        .cx = 0x6677,
-        .dx = 0x7788,
-        .sp = 0x4411,
-        .bp = 0x3344,
-        .si = 0x6677,
-        .di = 0x7788,
-        .es = 0x6677,
-        .ss = 0x4411,
-        .ds = 0x3344,
-    }, sim);
+    try testExpectSim(
+        .{
+            .ax = 0x4411,
+            .bx = 0x3344,
+            .cx = 0x6677,
+            .dx = 0x7788,
+            .sp = 0x4411,
+            .bp = 0x3344,
+            .si = 0x6677,
+            .di = 0x7788,
+            .es = 0x6677,
+            .ss = 0x4411,
+            .ds = 0x3344,
+        },
+        try testRunSimListing("0045_challenge_register_movs"),
+    );
 }
 
 test "0046: add sub cmp" {
-    var file = try testOpenListing("0046_add_sub_cmp");
-    defer file.close();
-
-    var sim = Sim{};
-    while (try decode.nextInstr(file.reader())) |instr| _ = try sim.executeInstr(instr);
-    try testing.expectEqual(Sim{
-        .bx = 0xe102,
-        .cx = 0x0f01,
-        .sp = 0x03e6,
-        .flags = Flags.initMany(&.{ .p, .z }),
-    }, sim);
+    try testExpectSim(
+        .{
+            .bx = 0xe102,
+            .cx = 0x0f01,
+            .sp = 0x03e6,
+            .flags = &.{ .p, .z },
+        },
+        try testRunSimListing("0046_add_sub_cmp"),
+    );
 }
 
 test "0047: challenge flags" {
-    var file = try testOpenListing("0047_challenge_flags");
-    defer file.close();
+    try testExpectSim(
+        .{
+            .bx = 0x9ca5,
+            .dx = 0x000a,
+            .sp = 0x0063,
+            .bp = 0x0062,
+            .flags = &.{ .c, .p, .a, .s },
+        },
+        try testRunSimListing("0047_challenge_flags"),
+    );
+}
 
-    var sim = Sim{};
-    while (try decode.nextInstr(file.reader())) |instr| _ = try sim.executeInstr(instr);
-    try testing.expectEqual(Sim{
-        .bx = 0x9ca5,
-        .dx = 0x000a,
-        .sp = 0x0063,
-        .bp = 0x0062,
-        .flags = Flags.initMany(&.{ .c, .p, .a, .s }),
-    }, sim);
+test "0048: ip register" {
+    try testExpectSim(
+        .{
+            .bx = 0x07d0,
+            .cx = 0xfce0,
+            .ip = 0x000e,
+            .flags = &.{ .c, .s },
+        },
+        try testRunSimListing("0048_ip_register"),
+    );
+}
+
+fn testRunSimListing(name: []const u8) !Sim {
+    var mem: Memory = undefined;
+    const end_i = blk: {
+        var file = try testOpenListing(name);
+        defer file.close();
+
+        const end_i = try file.readAll(&mem);
+        @memset(mem[end_i..], 0);
+        break :blk end_i;
+    };
+
+    var sim = Sim{ .mem = &mem };
+    while (sim.ip < end_i) _ = try sim.step();
+    return sim;
+}
+
+const ExpectedSim = struct {
+    ax: u16 = 0,
+    bx: u16 = 0,
+    cx: u16 = 0,
+    dx: u16 = 0,
+    sp: u16 = 0,
+    bp: u16 = 0,
+    si: u16 = 0,
+    di: u16 = 0,
+    es: u16 = 0,
+    ss: u16 = 0,
+    ds: u16 = 0,
+    cs: u16 = 0,
+
+    /// null = don't care.
+    ip: ?u16 = null,
+
+    flags: []const Flag = &.{},
+};
+
+fn testExpectSim(expected: ExpectedSim, actual: Sim) !void {
+    inline for (@typeInfo(ExpectedSim).Struct.fields) |field| switch (field.type) {
+        u16 => {
+            try testing.expectEqual(@field(expected, field.name), @field(actual, field.name));
+        },
+        ?u16 => if (@field(expected, field.name)) |expected_val| {
+            try testing.expectEqual(expected_val, @field(actual, field.name));
+        },
+        []const Flag => {
+            try testing.expectEqual(Flags.initMany(expected.flags), @field(actual, field.name));
+        },
+        else => {},
+    };
 }
