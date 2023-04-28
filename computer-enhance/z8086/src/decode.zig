@@ -152,7 +152,7 @@ pub const Register = enum {
     si,
     di,
 
-    // Segment registers.
+    // Segment registers (wide).
     es,
     cs,
     ss,
@@ -175,6 +175,10 @@ pub const Register = enum {
 
     inline fn getSegment(reg: u2) Register {
         return @intToEnum(Register, @enumToInt(Register.es) + reg);
+    }
+
+    pub inline fn isWide(self: Register) bool {
+        return @enumToInt(self) >= @enumToInt(Register.ax);
     }
 };
 
