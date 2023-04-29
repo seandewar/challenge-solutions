@@ -151,6 +151,7 @@ pub const Register = enum {
     bp,
     si,
     di,
+    ip,
 
     // Segment registers (wide).
     es,
@@ -160,8 +161,10 @@ pub const Register = enum {
 
     comptime {
         // Order and value of fields are important to the getters!
-        const expected =
-            .{ "al", "cl", "dl", "bl", "ah", "ch", "dh", "bh", "ax", "cx", "dx", "bx", "sp", "bp", "si", "di", "es", "cs", "ss", "ds" };
+        const expected = .{ "al", "cl", "dl", "bl", "ah", "ch", "dh", "bh" } ++
+            .{ "ax", "cx", "dx", "bx", "sp", "bp", "si", "di", "ip" } ++
+            .{ "es", "cs", "ss", "ds" };
+
         for (@typeInfo(@This()).Enum.fields, expected, 0..) |info, name, val| {
             std.debug.assert(std.mem.eql(u8, info.name, name));
             std.debug.assert(info.value == val);

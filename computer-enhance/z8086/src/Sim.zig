@@ -69,12 +69,12 @@ fn executeInstr(self: *Sim, instr: decode.Instr, instr_size: u16) !Change {
         .regs => |regs| .{ .dst = .{ .reg = regs.dst }, .src = .{ .reg = regs.src } },
         .reg => |reg| .{ .dst = .{ .reg = reg } },
         .imm => |imm| .{ .src = .{ .imm = imm } },
+        .ip_off => |ip_off| .{ .src = .{ .ip_off = ip_off } },
 
-        .ip_off, .interseg_addr => return error.UnsupportedInstr, // TODO
+        .interseg_addr => return error.UnsupportedInstr, // TODO
         .none => .{},
     };
 
-    const old_ip = self.ip;
     const change = switch (instr.op) {
         .mov => self.writeOperand(operands.dst, self.readOperand(operands.src)),
 
@@ -89,10 +89,15 @@ fn executeInstr(self: *Sim, instr: decode.Instr, instr_size: u16) !Change {
             break :blk if (instr.op != .cmp) self.writeOperand(operands.dst, result) else .none;
         },
 
+        .jne => if (!self.flags.contains(.z))
+            self.writeRegister(.ip, self.ip +% @bitCast(u16, operands.src.ip_off))
+        else
+            .none,
+
         else => return error.UnsupportedInstr,
     };
 
-    if (old_ip == self.ip) self.ip +%= instr_size;
+    self.ip +%= instr_size;
     return change;
 }
 
@@ -319,6 +324,17 @@ test "0048: ip register" {
             .flags = &.{ .c, .s },
         },
         try testRunSimListing("0048_ip_register"),
+    );
+}
+
+test "0049: conditional jumps" {
+    try testExpectSim(
+        .{
+            .bx = 0x0406,
+            .ip = 0x000e,
+            .flags = &.{ .p, .z },
+        },
+        try testRunSimListing("0049_conditional_jumps"),
     );
 }
 
