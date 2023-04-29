@@ -490,7 +490,7 @@ pub const ModInstr = struct {
 
     fn decode(reader: anytype, first: u8) !ModInstr {
         const info: struct { w: bool, d: bool } = switch (first) {
-            0x8c => .{ .w = true, .d = (first >> 1) & 1 == 1 },
+            0x8c => .{ .w = true, .d = false },
             0x8d, 0x8e, 0xc4, 0xc5 => .{ .w = true, .d = true },
             else => .{ .w = first & 1 == 1, .d = (first >> 1) & 1 == 1 },
         };
