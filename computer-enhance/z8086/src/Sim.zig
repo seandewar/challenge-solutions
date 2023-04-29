@@ -89,10 +89,27 @@ fn executeInstr(self: *Sim, instr: decode.Instr, instr_size: u16) !Change {
             break :blk if (instr.op != .cmp) self.writeOperand(operands.dst, result) else .none;
         },
 
-        .jne => if (!self.flags.contains(.z))
-            self.writeRegister(.ip, self.ip +% @bitCast(u16, operands.src.ip_off))
-        else
-            .none,
+        .jb => self.doJump(self.flags.contains(.c), operands.src.ip_off, false),
+        .jbe => self.doJump(self.flags.contains(.c) or self.flags.contains(.z), operands.src.ip_off, false),
+        .jcxz => self.doJump(self.cx == 0, operands.src.ip_off, false),
+        .je => self.doJump(self.flags.contains(.z), operands.src.ip_off, false),
+        .jl => self.doJump(self.flags.contains(.s) != self.flags.contains(.o), operands.src.ip_off, false),
+        .jle => self.doJump((self.flags.contains(.s) != self.flags.contains(.o)) or self.flags.contains(.z), operands.src.ip_off, false),
+        .jmp => self.doJump(true, operands.src.ip_off, false),
+        .jnb => self.doJump(!self.flags.contains(.c), operands.src.ip_off, false),
+        .jnbe => self.doJump(!self.flags.contains(.c) and !self.flags.contains(.z), operands.src.ip_off, false),
+        .jne => self.doJump(!self.flags.contains(.z), operands.src.ip_off, false),
+        .jnl => self.doJump(self.flags.contains(.s) == self.flags.contains(.o), operands.src.ip_off, false),
+        .jnle => self.doJump((self.flags.contains(.s) == self.flags.contains(.o)) and !self.flags.contains(.z), operands.src.ip_off, false),
+        .jno => self.doJump(!self.flags.contains(.o), operands.src.ip_off, false),
+        .jnp => self.doJump(!self.flags.contains(.p), operands.src.ip_off, false),
+        .jns => self.doJump(!self.flags.contains(.s), operands.src.ip_off, false),
+        .jo => self.doJump(self.flags.contains(.o), operands.src.ip_off, false),
+        .jp => self.doJump(self.flags.contains(.p), operands.src.ip_off, false),
+        .js => self.doJump(self.flags.contains(.s), operands.src.ip_off, false),
+        .loop => self.doJump(true, operands.src.ip_off, true),
+        .loope => self.doJump(self.flags.contains(.z), operands.src.ip_off, true),
+        .loopne => self.doJump(!self.flags.contains(.z), operands.src.ip_off, true),
 
         else => return error.UnsupportedInstr,
     };
@@ -119,6 +136,12 @@ fn doAddSub(self: *Sim, comptime w: bool, add: bool, a: if (w) u16 else u8, b: @
     self.flags.setPresent(.a, (if (add) @addWithOverflow(an, bn) else @subWithOverflow(an, bn))[1] == 1);
 
     return result[0];
+}
+
+inline fn doJump(self: *Sim, cond: bool, ip_off: i16, comptime is_loop: bool) Change {
+    if (is_loop) self.cx -%= 1;
+    const should_jump = cond and (!is_loop or self.cx != 0);
+    return if (should_jump) self.writeRegister(.ip, self.ip +% @bitCast(u16, ip_off)) else .none;
 }
 
 const Operands = struct {
@@ -335,6 +358,18 @@ test "0049: conditional jumps" {
             .flags = &.{ .p, .z },
         },
         try testRunSimListing("0049_conditional_jumps"),
+    );
+}
+
+test "0050: challenge jumps" {
+    try testExpectSim(
+        .{
+            .ax = 0x000d,
+            .bx = 0xfffb,
+            .ip = 0x001c,
+            .flags = &.{ .c, .a, .s },
+        },
+        try testRunSimListing("0050_challenge_jumps"),
     );
 }
 
