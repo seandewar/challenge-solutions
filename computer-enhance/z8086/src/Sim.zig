@@ -229,13 +229,17 @@ fn writeOperand(self: *Sim, operand: Operand, val: u16) Change {
 }
 
 pub inline fn readMemory(self: Sim, addr: u16, w: bool) u16 {
-    return if (w) std.mem.readIntSliceLittle(u16, self.mem[addr..]) else self.mem[addr];
+    return if (w)
+        std.mem.readIntLittle(u16, &.{ self.mem[addr], self.mem[addr +% 1] })
+    else
+        self.mem[addr];
 }
 
 fn writeMemory(self: *Sim, addr: u16, w: bool, val: u16) Change {
     if (w) {
-        const old_val = std.mem.readIntSliceLittle(u16, self.mem[addr..]);
-        std.mem.writeIntSliceLittle(u16, self.mem[addr..], val);
+        const old_val = std.mem.readIntLittle(u16, &.{ self.mem[addr], self.mem[addr +% 1] });
+        self.mem[addr] = @truncate(u8, val);
+        self.mem[addr +% 1] = @truncate(u8, val >> 8);
         return .{ .memw = .{ .addr = addr, .old_val = old_val } };
     } else {
         const old_val = self.mem[addr];
@@ -274,6 +278,13 @@ fn writeRegister(self: *Sim, reg: decode.Register, val: u16) Change {
     }
 
     return change;
+}
+
+test "wrapping read/write works" {
+    var mem = std.mem.zeroes(Sim.Memory);
+    var sim = Sim{ .mem = &mem };
+    _ = sim.writeMemory(0xffff, true, 0x1234);
+    try testing.expectEqual(@as(u16, 0x1234), sim.readMemory(0xffff, true));
 }
 
 // Following tests are based on the "Computer, Enhance!" perfaware listings:
@@ -370,6 +381,47 @@ test "0050: challenge jumps" {
             .flags = &.{ .c, .a, .s },
         },
         try testRunSimListing("0050_challenge_jumps"),
+    );
+}
+
+test "0051: memory mov" {
+    try testExpectSim(
+        .{
+            .bx = 0x0001,
+            .cx = 0x0002,
+            .dx = 0x000a,
+            .bp = 0x0004,
+            .ip = 0x0030,
+        },
+        try testRunSimListing("0051_memory_mov"),
+    );
+}
+
+test "0052: memory add loop" {
+    try testExpectSim(
+        .{
+            .bx = 0x0006,
+            .cx = 0x0004,
+            .dx = 0x0006,
+            .bp = 0x03e8,
+            .si = 0x0006,
+            .ip = 0x0023,
+            .flags = &.{ .p, .z },
+        },
+        try testRunSimListing("0052_memory_add_loop"),
+    );
+}
+
+test "0053: add loop challenge" {
+    try testExpectSim(
+        .{
+            .bx = 0x0006,
+            .dx = 0x0006,
+            .bp = 0x03e6,
+            .ip = 0x0021,
+            .flags = &.{ .p, .z },
+        },
+        try testRunSimListing("0053_add_loop_challenge"),
     );
 }
 

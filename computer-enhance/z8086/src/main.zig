@@ -172,7 +172,7 @@ fn doSim(sim: *Sim, end_ip: u16, raw_writer: anytype, options: Options) !void {
             inline .memb, .memw => |mem, tag| try writer.print(
                 " {s} PTR [0x{x}]: 0x{x} -> 0x{x}",
                 .{
-                    if (tag == .memb) "BYTE" else "WIDE",
+                    if (tag == .memb) "BYTE" else "WORD",
                     mem.addr,
                     mem.old_val,
                     sim.readMemory(mem.addr, true),
