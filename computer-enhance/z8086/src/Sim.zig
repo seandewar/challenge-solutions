@@ -294,20 +294,23 @@ test "wrapping read/write works" {
 const testOpenListing = @import("test.zig").testOpenListing;
 
 test "0043: immediate movs" {
+    var mem: Memory = undefined;
     try testExpectSim(
         .{ .ax = 1, .bx = 2, .cx = 3, .dx = 4, .sp = 5, .bp = 6, .si = 7, .di = 8 },
-        try testRunSimListing("0043_immediate_movs"),
+        try testRunListing("0043_immediate_movs", &mem),
     );
 }
 
 test "0044: register movs" {
+    var mem: Memory = undefined;
     try testExpectSim(
         .{ .ax = 4, .bx = 3, .cx = 2, .dx = 1, .sp = 1, .bp = 2, .si = 3, .di = 4 },
-        try testRunSimListing("0044_register_movs"),
+        try testRunListing("0044_register_movs", &mem),
     );
 }
 
 test "0045: challenge register movs" {
+    var mem: Memory = undefined;
     try testExpectSim(
         .{
             .ax = 0x4411,
@@ -322,11 +325,12 @@ test "0045: challenge register movs" {
             .ss = 0x4411,
             .ds = 0x3344,
         },
-        try testRunSimListing("0045_challenge_register_movs"),
+        try testRunListing("0045_challenge_register_movs", &mem),
     );
 }
 
 test "0046: add sub cmp" {
+    var mem: Memory = undefined;
     try testExpectSim(
         .{
             .bx = 0xe102,
@@ -334,11 +338,12 @@ test "0046: add sub cmp" {
             .sp = 0x03e6,
             .flags = &.{ .p, .z },
         },
-        try testRunSimListing("0046_add_sub_cmp"),
+        try testRunListing("0046_add_sub_cmp", &mem),
     );
 }
 
 test "0047: challenge flags" {
+    var mem: Memory = undefined;
     try testExpectSim(
         .{
             .bx = 0x9ca5,
@@ -347,11 +352,12 @@ test "0047: challenge flags" {
             .bp = 0x0062,
             .flags = &.{ .c, .p, .a, .s },
         },
-        try testRunSimListing("0047_challenge_flags"),
+        try testRunListing("0047_challenge_flags", &mem),
     );
 }
 
 test "0048: ip register" {
+    var mem: Memory = undefined;
     try testExpectSim(
         .{
             .bx = 0x07d0,
@@ -359,22 +365,24 @@ test "0048: ip register" {
             .ip = 0x000e,
             .flags = &.{ .c, .s },
         },
-        try testRunSimListing("0048_ip_register"),
+        try testRunListing("0048_ip_register", &mem),
     );
 }
 
 test "0049: conditional jumps" {
+    var mem: Memory = undefined;
     try testExpectSim(
         .{
             .bx = 0x0406,
             .ip = 0x000e,
             .flags = &.{ .p, .z },
         },
-        try testRunSimListing("0049_conditional_jumps"),
+        try testRunListing("0049_conditional_jumps", &mem),
     );
 }
 
 test "0050: challenge jumps" {
+    var mem: Memory = undefined;
     try testExpectSim(
         .{
             .ax = 0x000d,
@@ -382,11 +390,12 @@ test "0050: challenge jumps" {
             .ip = 0x001c,
             .flags = &.{ .c, .a, .s },
         },
-        try testRunSimListing("0050_challenge_jumps"),
+        try testRunListing("0050_challenge_jumps", &mem),
     );
 }
 
 test "0051: memory mov" {
+    var mem: Memory = undefined;
     try testExpectSim(
         .{
             .bx = 0x0001,
@@ -395,11 +404,12 @@ test "0051: memory mov" {
             .bp = 0x0004,
             .ip = 0x0030,
         },
-        try testRunSimListing("0051_memory_mov"),
+        try testRunListing("0051_memory_mov", &mem),
     );
 }
 
 test "0052: memory add loop" {
+    var mem: Memory = undefined;
     try testExpectSim(
         .{
             .bx = 0x0006,
@@ -410,11 +420,12 @@ test "0052: memory add loop" {
             .ip = 0x0023,
             .flags = &.{ .p, .z },
         },
-        try testRunSimListing("0052_memory_add_loop"),
+        try testRunListing("0052_memory_add_loop", &mem),
     );
 }
 
 test "0053: add loop challenge" {
+    var mem: Memory = undefined;
     try testExpectSim(
         .{
             .bx = 0x0006,
@@ -423,11 +434,12 @@ test "0053: add loop challenge" {
             .ip = 0x0021,
             .flags = &.{ .p, .z },
         },
-        try testRunSimListing("0053_add_loop_challenge"),
+        try testRunListing("0053_add_loop_challenge", &mem),
     );
 }
 
 test "0054: draw rectangle" {
+    var mem: Memory = undefined;
     try testExpectSim(
         .{
             .cx = 0x0040,
@@ -436,22 +448,34 @@ test "0054: draw rectangle" {
             .ip = 0x0026,
             .flags = &.{ .p, .z },
         },
-        try testRunSimListing("0054_draw_rectangle"),
+        try testRunListing("0054_draw_rectangle", &mem),
     );
 }
 
-fn testRunSimListing(name: []const u8) !Sim {
+test "0055: challenge rectangle" {
     var mem: Memory = undefined;
+    try testExpectSim(
+        .{
+            .bx = 0x4004,
+            .bp = 0x02fc,
+            .ip = 0x0044,
+            .flags = &.{.p},
+        },
+        try testRunListing("0055_challenge_rectangle", &mem),
+    );
+}
+
+pub fn testRunListing(name: []const u8, mem: *Memory) !Sim {
     const end_i = blk: {
         var file = try testOpenListing(name);
         defer file.close();
 
-        const end_ip = try file.readAll(&mem);
+        const end_ip = try file.readAll(mem);
         @memset(mem[end_ip..], 0);
         break :blk end_ip;
     };
 
-    var sim = Sim{ .mem = &mem };
+    var sim = Sim{ .mem = mem };
     while (sim.ip < end_i) _ = try sim.step();
     return sim;
 }
