@@ -70,7 +70,7 @@ fn executeInstr(self: *Sim, instr: decode.Instr, instr_size: u16) !Change {
         .regs => |regs| .{ .dst = .{ .reg = regs.dst }, .src = .{ .reg = regs.src } },
         .reg => |reg| .{ .dst = .{ .reg = reg } },
         .imm => |imm| .{ .src = .{ .imm = imm } },
-        .ip_off => |ip_off| .{ .src = .{ .ip_off = ip_off } },
+        .ip_off => |ip_off| .{ .src = .{ .ip_off = ip_off.off } },
 
         .interseg_addr => return error.UnsupportedInstr, // TODO
         .none => .{},
