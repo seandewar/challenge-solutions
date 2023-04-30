@@ -18,41 +18,105 @@ pub fn panic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace, ret_
     std.builtin.default_panic(msg, error_return_trace, ret_addr);
 }
 
-pub fn main() !u8 {
-    defer flushStdOutOrLogErr();
+const Options = struct {
+    right_justify: u64 = 42,
+    disasm: bool = true,
+    sim: bool = true,
+};
 
+pub fn main() !u8 {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
-    var args_it = try std.process.argsWithAllocator(arena.allocator());
-    defer args_it.deinit();
-    _ = args_it.skip(); // Skip executable path.
 
-    var file_i: usize = 0;
-    while (args_it.next()) |file_path| : (file_i += 1) {
-        const file = std.fs.cwd().openFile(file_path, .{}) catch |err| {
-            log.err("Failed to open file \"{s}\": {!}", .{ file_path, err });
-            return 1;
-        };
-        defer file.close();
-        var file_buffered = std.io.bufferedReader(file.reader());
+    const allocator = arena.allocator();
+    var args_it = try std.process.argsWithAllocator(allocator);
+    var files = std.ArrayListUnmanaged([]const u8){};
+    var options = Options{};
+    defer flushStdOutOrLogErr();
+    {
+        const exe_path = args_it.next();
+        var files_only = false;
+        while (args_it.next()) |arg| {
+            if (!files_only and arg.len >= 2 and arg[0] == '-') {
+                const option = if (arg[1] == '-')
+                    if (arg.len == 2) {
+                        files_only = true;
+                        continue;
+                    } else if (std.mem.eql(u8, "--no-disasm", arg))
+                        "-D"
+                    else if (std.mem.eql(u8, "--no-sim", arg))
+                        "-S"
+                    else if (std.mem.eql(u8, "--help", arg))
+                        "-h"
+                    else if (std.mem.startsWith(u8, arg, "--justify=")) {
+                        const val_str = arg["--justify=".len..];
+                        options.right_justify = std.fmt.parseInt(std.meta.FieldType(Options, .right_justify), val_str, 10) catch {
+                            log.err("Invalid \"--justify\" value: \"{s}\"", .{val_str});
+                            return 1;
+                        };
+                        continue;
+                    } else {
+                        log.err("Unknown option: \"{s}\"", .{arg});
+                        return 1;
+                    }
+                else
+                    arg;
 
-        if (file_i > 0) try stdout.writeByte('\n');
-        try stdout.print("; {s}\n", .{file_path});
-        doTheWork(file_buffered.reader(), file_path, .{}) catch return 1;
+                for (option[1..]) |flag| switch (flag) {
+                    'D' => options.disasm = false,
+                    'S' => options.sim = false,
+                    'h' => {
+                        try stdout.print(
+                            \\Usage: {s} [OPTION]... [FILE]...
+                            \\Disassemble and simulate Intel 8086 binary FILE(s) to standard output.
+                            \\
+                            \\With no FILE, or when FILE is '-', standard input is read.
+                            \\
+                            \\  -D, --no-disasm   do not disassemble the binaries
+                            \\  -S, --no-sim      do not simulate the binaries
+                            \\  --justify=N       right-justify instruction info by at least N columns
+                            \\  -h, --help        display this help and exit
+                            \\
+                        , .{exe_path orelse "z8086"});
+                        return 0;
+                    },
+                    else => {
+                        log.err("Unknown option: \"-{c}\"", .{flag});
+                        return 1;
+                    },
+                };
+                continue;
+            }
+
+            if (!std.mem.eql(u8, "-", arg) or files.items.len > 0) try files.append(allocator, arg);
+        }
     }
-    if (file_i == 0) {
+    if (!options.disasm and !options.sim) {
+        log.err("Cannot use options \"-D\" and \"-S\" together", .{});
+        return 1;
+    }
+
+    if (files.items.len > 0) {
+        for (files.items, 0..) |file_path, i| {
+            const file = std.fs.cwd().openFile(file_path, .{}) catch |err| {
+                flushStdOutOrLogErr();
+                log.err("Failed to open file \"{s}\": {!}", .{ file_path, err });
+                return 1;
+            };
+            defer file.close();
+            var file_buffered = std.io.bufferedReader(file.reader());
+
+            if (i > 0) try stdout.writeByte('\n');
+            try stdout.print("; {s}\n", .{file_path});
+            doTheWork(file_buffered.reader(), file_path, options) catch return 1;
+        }
+    } else {
         var stdin_buffered = std.io.bufferedReader(std.io.getStdIn().reader());
-        doTheWork(stdin_buffered.reader(), "from standard input", .{}) catch return 1;
+        doTheWork(stdin_buffered.reader(), "from standard input", options) catch return 1;
     }
 
     return 0;
 }
-
-const Options = struct {
-    max_comment_pad: u64 = 42,
-    disasm: bool = true,
-    sim: bool = true,
-};
 
 fn doTheWork(raw_reader: anytype, name: []const u8, options: Options) !void {
     std.debug.assert(options.disasm or options.sim);
@@ -107,7 +171,7 @@ fn doTheWork(raw_reader: anytype, name: []const u8, options: Options) !void {
 
     if (options.disasm) {
         var it = decode.instrIterator(stream.reader());
-        doDisasm(&it, stdout, options.max_comment_pad) catch |err| {
+        doDisasm(&it, stdout, options.right_justify) catch |err| {
             flushStdOutOrLogErr();
             log.err("Failed to disassemble {s}: {!}", .{ name, err });
             if (it.getPrevBytes().len > 0) {
@@ -123,7 +187,7 @@ fn doTheWork(raw_reader: anytype, name: []const u8, options: Options) !void {
     if (options.sim) {
         var create_sim_result = stream.createSim();
         if (create_sim_result) |*sim| {
-            doSim(sim, @intCast(u16, stream.sim_mem.?.len), stdout, options.max_comment_pad) catch |err| {
+            doSim(sim, @intCast(u16, stream.sim_mem.?.len), stdout, options.right_justify) catch |err| {
                 flushStdOutOrLogErr();
                 log.err("Failed to simulate {s}: {!}", .{ name, err });
                 log.err("(at address: $0x{x})", .{sim.ip});
@@ -139,7 +203,7 @@ fn doTheWork(raw_reader: anytype, name: []const u8, options: Options) !void {
     if (had_errors) return error.WorkHadErrors;
 }
 
-fn doDisasm(instr_it: anytype, raw_writer: anytype, max_comment_pad: u64) !void {
+fn doDisasm(instr_it: anytype, raw_writer: anytype, right_justify: u64) !void {
     try raw_writer.writeAll("bits 16\n");
     var counting_writer = std.io.countingWriter(raw_writer);
     const writer = counting_writer.writer();
@@ -148,7 +212,7 @@ fn doDisasm(instr_it: anytype, raw_writer: anytype, max_comment_pad: u64) !void 
         counting_writer.bytes_written = 0;
         try disasm.writeInstr(instr, writer);
 
-        const pad = @max(max_comment_pad, counting_writer.bytes_written);
+        const pad = @max(right_justify, counting_writer.bytes_written);
         for (counting_writer.bytes_written..pad) |_| try writer.writeByte(' ');
         try writer.writeAll(" ;");
         for (instr_it.getPrevBytes()) |b| try writer.print(" {x:0>2}", .{b});
@@ -157,7 +221,7 @@ fn doDisasm(instr_it: anytype, raw_writer: anytype, max_comment_pad: u64) !void 
     }
 }
 
-fn doSim(sim: *Sim, end_ip: u16, raw_writer: anytype, max_comment_pad: u64) !void {
+fn doSim(sim: *Sim, end_ip: u16, raw_writer: anytype, right_justify: u64) !void {
     try raw_writer.writeAll("\n; Simulation:\n");
     var counting_writer = std.io.countingWriter(raw_writer);
     const writer = counting_writer.writer();
@@ -171,23 +235,24 @@ fn doSim(sim: *Sim, end_ip: u16, raw_writer: anytype, max_comment_pad: u64) !voi
         counting_writer.bytes_written = 0;
         try writer.print("; $0x{x}: ", .{instr_ip});
         try disasm.writeInstr(instr, writer);
-
         const flags_changed = !old_flags.eql(sim.flags);
-        if (info.change == .none and !flags_changed) continue; // Nothing else to print; skip padding.
-        const pad = @max(max_comment_pad, counting_writer.bytes_written);
+        if (info.change == .none and !flags_changed) continue; // Nothing else to print.
+
+        const pad = @max(right_justify, counting_writer.bytes_written);
         for (counting_writer.bytes_written..pad) |_| try writer.writeByte(' ');
+        try writer.writeAll(" (");
 
         switch (info.change) {
             .reg => |reg| try writer.print(
-                " {s}: 0x{x} -> 0x{x}",
+                "{s}: 0x{x} -> 0x{x}",
                 .{ @tagName(reg.reg), reg.old_val, sim.readRegister(reg.reg) },
             ),
             .loop_old_ip => |old_ip| try writer.print(
-                " ip: 0x{x} -> 0x{x}, cx: 0x{x} -> 0x{x}",
+                "ip: 0x{x} -> 0x{x}, cx: 0x{x} -> 0x{x}",
                 .{ old_ip, sim.ip, sim.cx +% 1, sim.cx },
             ),
             inline .memb, .memw => |mem, tag| try writer.print(
-                " {s} PTR [0x{x}]: 0x{x} -> 0x{x}",
+                "{s} PTR [0x{x}]: 0x{x} -> 0x{x}",
                 .{
                     if (tag == .memb) "BYTE" else "WORD",
                     mem.addr,
@@ -197,14 +262,15 @@ fn doSim(sim: *Sim, end_ip: u16, raw_writer: anytype, max_comment_pad: u64) !voi
             ),
             .none => {},
         }
-
         if (flags_changed) {
-            if (info.change != .none) try writer.writeByte(',');
-            try writer.writeAll(" f: ");
+            if (info.change != .none) try writer.writeAll(", ");
+            try writer.writeAll("f: ");
             try printFlags(writer, old_flags);
             try writer.writeAll(" -> ");
             try printFlags(writer, sim.flags);
         }
+
+        try writer.writeByte(')');
     }
 
     try writer.writeAll(";\n; Final (non-zero) registers:\n");
@@ -602,37 +668,37 @@ test "0052: memory add loop (simulation)" {
     try testing.expectEqualStrings(
         \\
         \\; Simulation:
-        \\; $0x0: mov dx, 0x6                        dx: 0x0 -> 0x6
-        \\; $0x3: mov bp, 0x3e8                      bp: 0x0 -> 0x3e8
-        \\; $0x6: mov si, 0x0                        si: 0x0 -> 0x0
-        \\; $0x9: mov [bp+si], si                    WORD PTR [0x3e8]: 0x0 -> 0x0
-        \\; $0xb: add si, 0x2                        si: 0x0 -> 0x2
-        \\; $0xe: cmp si, dx                         f: _ -> CPAS
-        \\; $0x10: jne $-0x7                         ip: 0x10 -> 0x9
-        \\; $0x9: mov [bp+si], si                    WORD PTR [0x3ea]: 0x0 -> 0x2
-        \\; $0xb: add si, 0x2                        si: 0x2 -> 0x4, f: CPAS -> _
-        \\; $0xe: cmp si, dx                         f: _ -> CAS
-        \\; $0x10: jne $-0x7                         ip: 0x10 -> 0x9
-        \\; $0x9: mov [bp+si], si                    WORD PTR [0x3ec]: 0x0 -> 0x4
-        \\; $0xb: add si, 0x2                        si: 0x4 -> 0x6, f: CAS -> P
-        \\; $0xe: cmp si, dx                         f: P -> PZ
+        \\; $0x0: mov dx, 0x6                        (dx: 0x0 -> 0x6)
+        \\; $0x3: mov bp, 0x3e8                      (bp: 0x0 -> 0x3e8)
+        \\; $0x6: mov si, 0x0                        (si: 0x0 -> 0x0)
+        \\; $0x9: mov [bp+si], si                    (WORD PTR [0x3e8]: 0x0 -> 0x0)
+        \\; $0xb: add si, 0x2                        (si: 0x0 -> 0x2)
+        \\; $0xe: cmp si, dx                         (f: _ -> CPAS)
+        \\; $0x10: jne $-0x7                         (ip: 0x10 -> 0x9)
+        \\; $0x9: mov [bp+si], si                    (WORD PTR [0x3ea]: 0x0 -> 0x2)
+        \\; $0xb: add si, 0x2                        (si: 0x2 -> 0x4, f: CPAS -> _)
+        \\; $0xe: cmp si, dx                         (f: _ -> CAS)
+        \\; $0x10: jne $-0x7                         (ip: 0x10 -> 0x9)
+        \\; $0x9: mov [bp+si], si                    (WORD PTR [0x3ec]: 0x0 -> 0x4)
+        \\; $0xb: add si, 0x2                        (si: 0x4 -> 0x6, f: CAS -> P)
+        \\; $0xe: cmp si, dx                         (f: P -> PZ)
         \\; $0x10: jne $-0x7
-        \\; $0x12: mov bx, 0x0                       bx: 0x0 -> 0x0
-        \\; $0x15: mov si, 0x0                       si: 0x6 -> 0x0
-        \\; $0x18: mov cx, [bp+si]                   cx: 0x0 -> 0x0
-        \\; $0x1a: add bx, cx                        bx: 0x0 -> 0x0
-        \\; $0x1c: add si, 0x2                       si: 0x0 -> 0x2, f: PZ -> _
-        \\; $0x1f: cmp si, dx                        f: _ -> CPAS
-        \\; $0x21: jne $-0x9                         ip: 0x21 -> 0x18
-        \\; $0x18: mov cx, [bp+si]                   cx: 0x0 -> 0x2
-        \\; $0x1a: add bx, cx                        bx: 0x0 -> 0x2, f: CPAS -> _
-        \\; $0x1c: add si, 0x2                       si: 0x2 -> 0x4
-        \\; $0x1f: cmp si, dx                        f: _ -> CAS
-        \\; $0x21: jne $-0x9                         ip: 0x21 -> 0x18
-        \\; $0x18: mov cx, [bp+si]                   cx: 0x2 -> 0x4
-        \\; $0x1a: add bx, cx                        bx: 0x2 -> 0x6, f: CAS -> P
-        \\; $0x1c: add si, 0x2                       si: 0x4 -> 0x6
-        \\; $0x1f: cmp si, dx                        f: P -> PZ
+        \\; $0x12: mov bx, 0x0                       (bx: 0x0 -> 0x0)
+        \\; $0x15: mov si, 0x0                       (si: 0x6 -> 0x0)
+        \\; $0x18: mov cx, [bp+si]                   (cx: 0x0 -> 0x0)
+        \\; $0x1a: add bx, cx                        (bx: 0x0 -> 0x0)
+        \\; $0x1c: add si, 0x2                       (si: 0x0 -> 0x2, f: PZ -> _)
+        \\; $0x1f: cmp si, dx                        (f: _ -> CPAS)
+        \\; $0x21: jne $-0x9                         (ip: 0x21 -> 0x18)
+        \\; $0x18: mov cx, [bp+si]                   (cx: 0x0 -> 0x2)
+        \\; $0x1a: add bx, cx                        (bx: 0x0 -> 0x2, f: CPAS -> _)
+        \\; $0x1c: add si, 0x2                       (si: 0x2 -> 0x4)
+        \\; $0x1f: cmp si, dx                        (f: _ -> CAS)
+        \\; $0x21: jne $-0x9                         (ip: 0x21 -> 0x18)
+        \\; $0x18: mov cx, [bp+si]                   (cx: 0x2 -> 0x4)
+        \\; $0x1a: add bx, cx                        (bx: 0x2 -> 0x6, f: CAS -> P)
+        \\; $0x1c: add si, 0x2                       (si: 0x4 -> 0x6)
+        \\; $0x1f: cmp si, dx                        (f: P -> PZ)
         \\; $0x21: jne $-0x9
         \\;
         \\; Final (non-zero) registers:
