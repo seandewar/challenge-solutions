@@ -31,6 +31,7 @@ pub const Change = union(enum) {
     reg: struct { reg: decode.Register, old_val: u16 },
     memb: struct { addr: u16, old_val: u8 },
     memw: struct { addr: u16, old_val: u16 },
+    loop_old_ip: u16,
 };
 
 pub fn step(self: *Sim) !struct { instr: ?decode.Instr, change: Change } {
@@ -141,7 +142,8 @@ fn doAddSub(self: *Sim, comptime w: bool, add: bool, a: if (w) u16 else u8, b: @
 inline fn doJump(self: *Sim, cond: bool, ip_off: i16, comptime is_loop: bool) Change {
     if (is_loop) self.cx -%= 1;
     const should_jump = cond and (!is_loop or self.cx != 0);
-    return if (should_jump) self.writeRegister(.ip, self.ip +% @bitCast(u16, ip_off)) else .none;
+    const change = if (should_jump) self.writeRegister(.ip, self.ip +% @bitCast(u16, ip_off)) else .none;
+    return if (is_loop and change != .none) .{ .loop_old_ip = change.reg.old_val } else change;
 }
 
 const Operands = struct {
@@ -422,6 +424,19 @@ test "0053: add loop challenge" {
             .flags = &.{ .p, .z },
         },
         try testRunSimListing("0053_add_loop_challenge"),
+    );
+}
+
+test "0054: draw rectangle" {
+    try testExpectSim(
+        .{
+            .cx = 0x0040,
+            .dx = 0x0040,
+            .bp = 0x4100,
+            .ip = 0x0026,
+            .flags = &.{ .p, .z },
+        },
+        try testRunSimListing("0054_draw_rectangle"),
     );
 }
 

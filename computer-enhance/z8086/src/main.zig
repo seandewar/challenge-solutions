@@ -169,6 +169,10 @@ fn doSim(sim: *Sim, end_ip: u16, raw_writer: anytype, options: Options) !void {
                 " {s}: 0x{x} -> 0x{x}",
                 .{ @tagName(reg.reg), reg.old_val, sim.readRegister(reg.reg) },
             ),
+            .loop_old_ip => |old_ip| try writer.print(
+                " ip: 0x{x} -> 0x{x}, cx: 0x{x} -> 0x{x}",
+                .{ old_ip, sim.ip, sim.cx +% 1, sim.cx },
+            ),
             inline .memb, .memw => |mem, tag| try writer.print(
                 " {s} PTR [0x{x}]: 0x{x} -> 0x{x}",
                 .{
