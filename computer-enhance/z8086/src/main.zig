@@ -19,9 +19,10 @@ pub fn panic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace, ret_
 }
 
 const Options = struct {
-    right_justify: u64 = 42,
     disasm: bool = true,
     sim: bool = true,
+    sim_screen_path: ?[]const u8 = null,
+    right_justify: u64 = 42,
 };
 
 pub fn main() !u8 {
@@ -49,11 +50,18 @@ pub fn main() !u8 {
                     else if (std.mem.eql(u8, "--help", arg))
                         "-h"
                     else if (std.mem.startsWith(u8, arg, "--justify=")) {
-                        const val_str = arg["--justify=".len..];
-                        options.right_justify = std.fmt.parseInt(std.meta.FieldType(Options, .right_justify), val_str, 10) catch {
-                            log.err("Invalid \"--justify\" value: \"{s}\"", .{val_str});
+                        const val = arg["--justify=".len..];
+                        options.right_justify = std.fmt.parseInt(std.meta.FieldType(Options, .right_justify), val, 10) catch {
+                            log.err("Invalid \"--justify\" value: \"{s}\"", .{val});
                             return 1;
                         };
+                        continue;
+                    } else if (std.mem.eql(u8, arg, "--screen")) {
+                        const path = args_it.next() orelse {
+                            log.err("Missing \"--screen\" path", .{});
+                            return 1;
+                        };
+                        options.sim_screen_path = path;
                         continue;
                     } else {
                         log.err("Unknown option: \"{s}\"", .{arg});
@@ -74,6 +82,9 @@ pub fn main() !u8 {
                             \\
                             \\  -D, --no-disasm   do not disassemble the binaries
                             \\  -S, --no-sim      do not simulate the binaries
+                            \\  --screen <FILE>   interpret the contents of simulated memory at 0x0100 as
+                            \\                    a 64x64 RGBA image and write it to <file> in BMP format
+                            \\                    only one input FILE can be used if this option is set
                             \\  --justify=N       right-justify instruction info by at least N columns
                             \\  -h, --help        display this help and exit
                             \\
@@ -92,7 +103,13 @@ pub fn main() !u8 {
         }
     }
     if (!options.disasm and !options.sim) {
-        log.err("Cannot use options \"-D\" and \"-S\" together", .{});
+        log.err("Cannot use \"-D\" and \"-S\" together", .{});
+        return 1;
+    } else if (!options.sim and options.sim_screen_path != null) {
+        log.err("Cannot use \"--screen\" with \"-S\"", .{});
+        return 1;
+    } else if (options.sim_screen_path != null and files.items.len > 1) {
+        log.err("Cannot specify more than one file with \"--screen\"", .{});
         return 1;
     }
 
@@ -120,6 +137,7 @@ pub fn main() !u8 {
 
 fn doTheWork(raw_reader: anytype, name: []const u8, options: Options) !void {
     std.debug.assert(options.disasm or options.sim);
+    std.debug.assert(options.sim or options.sim_screen_path == null);
 
     // A custom stream that is used to read from `reader` while also populating
     // a `Sim.Memory` buffer to be used for simulating the read binary.
@@ -193,6 +211,23 @@ fn doTheWork(raw_reader: anytype, name: []const u8, options: Options) !void {
                 log.err("(at address: $0x{x})", .{sim.ip});
                 had_errors = true;
             };
+
+            if (options.sim_screen_path) |path| write_screen: {
+                const file = std.fs.cwd().createFile(path, .{}) catch |err| {
+                    flushStdOutOrLogErr();
+                    log.err("Failed to open {s} for writing the simulated screen: {!}", .{ path, err });
+                    had_errors = true;
+                    break :write_screen;
+                };
+                defer file.close();
+
+                var buffered_writer = std.io.bufferedWriter(file.writer());
+                writeSimScreenBmp(buffered_writer.writer(), sim.mem.*, 64, 64) catch |err| {
+                    flushStdOutOrLogErr();
+                    log.err("Failed to write simulated screen to {s}: {!}", .{ path, err });
+                    had_errors = true;
+                };
+            }
         } else |err| {
             flushStdOutOrLogErr();
             log.err("Failed to simulate {s}: {!}", .{ name, err });
@@ -284,6 +319,32 @@ fn doSim(sim: *Sim, end_ip: u16, raw_writer: anytype, right_justify: u64) !void 
         try printFlags(writer, sim.flags);
         try writer.writeByte('\n');
     }
+}
+
+fn writeSimScreenBmp(writer: anytype, mem: Sim.Memory, w: u16, h: u16) !void {
+    const bitmap_size: u32 = 4 * w * h;
+
+    // BMP Header (14 bytes).
+    try writer.writeAll("BM"); // Magic.
+    try writer.writeIntLittle(u32, 14 + 40 + bitmap_size); // File size.
+    try writer.writeByteNTimes(0, 4); // Reserved.
+    try writer.writeIntLittle(u32, 14 + 40); // Bitmap data start offset.
+
+    // DIB Header (40 bytes; Windows BITMAPINFOHEADER format, as it's simple and supports 32bpp).
+    try writer.writeIntLittle(u32, 40); // DIB header size.
+    try writer.writeIntLittle(i32, w); // Bitmap width.
+    try writer.writeIntLittle(i32, h); // Bitmap height.
+    try writer.writeIntLittle(u16, 1); // Colour planes.
+    try writer.writeIntLittle(u16, 32); // Bits per pixel (bpp).
+    try writer.writeIntLittle(u32, 0); // Compression method (0 = no compression).
+    try writer.writeIntLittle(u32, 0); // Bitmap size (we're not compressing, so can be 0).
+    try writer.writeIntLittle(i32, 2835); // Horizontal pixels per metre.
+    try writer.writeIntLittle(i32, 2835); // Vertical pixels per metre.
+    try writer.writeIntLittle(u32, 0); // Number of colours (0 = 2^n).
+    try writer.writeIntLittle(u32, 0); // Number of important colours (0 = all important).
+
+    // Bitmap data.
+    try writer.writeAll(mem[0x100..][0..bitmap_size]);
 }
 
 inline fn printFlags(writer: anytype, flags: Sim.Flags) !void {
@@ -711,4 +772,16 @@ test "0052: memory add loop (simulation)" {
         \\; flags: PZ
         \\
     , output.items);
+}
+
+test "0055: challenge rectangle (simulation screen BMP)" {
+    const expected = try std.fs.cwd().readFileAlloc(testing.allocator, "0055_expected.bmp", 32 * 1024);
+    defer testing.allocator.free(expected);
+    var actual = std.ArrayList(u8).init(testing.allocator);
+    defer actual.deinit();
+
+    var mem: Sim.Memory = undefined;
+    _ = try Sim.testRunListing("0055_challenge_rectangle", &mem);
+    try writeSimScreenBmp(actual.writer(), mem, 64, 64);
+    try testing.expectEqualSlices(u8, expected, actual.items);
 }
