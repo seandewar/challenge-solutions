@@ -40,7 +40,10 @@ pub fn writeInstr(instr: decode.Instr, writer: anytype) !void {
         },
 
         .data => |data| try writer.print(" {s}, 0x{x}", .{ @tagName(data.dst_reg), data.imm }),
-        .ip_off => |ip_off| try writer.print(" ${s}0x{x}", .{ if (ip_off >= 0) "+" else "-", std.math.absCast(ip_off) }),
+        .ip_off => |ip_off| {
+            const total_off = @bitCast(i16, ip_off.instr_size) +% ip_off.off;
+            try writer.print(" ${s}0x{x}", .{ if (total_off >= 0) "+" else "-", std.math.absCast(total_off) });
+        },
         .interseg_addr => |interseg_addr| try writer.print(" 0x{x}:0x{x}", .{ interseg_addr.cs, interseg_addr.addr }),
         .regs => |regs| try writer.print(" {s}, {s}", .{ @tagName(regs.dst), @tagName(regs.src) }),
         .reg => |reg| try writer.print(" {s}", .{@tagName(reg)}),

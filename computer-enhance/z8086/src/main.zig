@@ -162,7 +162,7 @@ fn doSim(sim: *Sim, end_ip: u16, raw_writer: anytype, max_comment_pad: u64) !voi
     var counting_writer = std.io.countingWriter(raw_writer);
     const writer = counting_writer.writer();
 
-    while (sim.ip < end_ip) {
+    while (sim.ip < end_ip) : (try writer.writeByte('\n')) {
         const old_flags = sim.flags;
         const instr_ip = sim.ip;
         const info = try sim.step();
@@ -172,8 +172,11 @@ fn doSim(sim: *Sim, end_ip: u16, raw_writer: anytype, max_comment_pad: u64) !voi
         try writer.print("; $0x{x}: ", .{instr_ip});
         try disasm.writeInstr(instr, writer);
 
+        const flags_changed = !old_flags.eql(sim.flags);
+        if (info.change == .none and !flags_changed) continue; // Nothing else to print; skip padding.
         const pad = @max(max_comment_pad, counting_writer.bytes_written);
         for (counting_writer.bytes_written..pad) |_| try writer.writeByte(' ');
+
         switch (info.change) {
             .reg => |reg| try writer.print(
                 " {s}: 0x{x} -> 0x{x}",
@@ -192,15 +195,16 @@ fn doSim(sim: *Sim, end_ip: u16, raw_writer: anytype, max_comment_pad: u64) !voi
                     sim.readMemory(mem.addr, true),
                 },
             ),
-            .none => try writer.writeAll(" _"),
+            .none => {},
         }
-        if (!old_flags.eql(sim.flags)) {
-            try writer.writeAll(", f: ");
+
+        if (flags_changed) {
+            if (info.change != .none) try writer.writeByte(',');
+            try writer.writeAll(" f: ");
             try printFlags(writer, old_flags);
             try writer.writeAll(" -> ");
             try printFlags(writer, sim.flags);
         }
-        try writer.writeByte('\n');
     }
 
     try writer.writeAll(";\n; Final (non-zero) registers:\n");
@@ -519,26 +523,26 @@ test "0042: completionist decode (disasm)" {
         \\ret 0xfff9                                 ; c2 f9 ff (imm)
         \\ret 0x1f4                                  ; c2 f4 01 (imm)
         \\ret                                        ; c3 (none)
-        \\je $-0x2                                   ; 74 fe (ip_off)
-        \\jl $-0x4                                   ; 7c fc (ip_off)
-        \\jle $-0x6                                  ; 7e fa (ip_off)
-        \\jb $-0x8                                   ; 72 f8 (ip_off)
-        \\jbe $-0xa                                  ; 76 f6 (ip_off)
-        \\jp $-0xc                                   ; 7a f4 (ip_off)
-        \\jo $-0xe                                   ; 70 f2 (ip_off)
-        \\js $-0x10                                  ; 78 f0 (ip_off)
-        \\jne $-0x12                                 ; 75 ee (ip_off)
-        \\jnl $-0x14                                 ; 7d ec (ip_off)
-        \\jnle $-0x16                                ; 7f ea (ip_off)
-        \\jnb $-0x18                                 ; 73 e8 (ip_off)
-        \\jnbe $-0x1a                                ; 77 e6 (ip_off)
-        \\jnp $-0x1c                                 ; 7b e4 (ip_off)
-        \\jno $-0x1e                                 ; 71 e2 (ip_off)
-        \\jns $-0x20                                 ; 79 e0 (ip_off)
-        \\loop $-0x22                                ; e2 de (ip_off)
-        \\loope $-0x24                               ; e1 dc (ip_off)
-        \\loopne $-0x26                              ; e0 da (ip_off)
-        \\jcxz $-0x28                                ; e3 d8 (ip_off)
+        \\je $+0x0                                   ; 74 fe (ip_off)
+        \\jl $-0x2                                   ; 7c fc (ip_off)
+        \\jle $-0x4                                  ; 7e fa (ip_off)
+        \\jb $-0x6                                   ; 72 f8 (ip_off)
+        \\jbe $-0x8                                  ; 76 f6 (ip_off)
+        \\jp $-0xa                                   ; 7a f4 (ip_off)
+        \\jo $-0xc                                   ; 70 f2 (ip_off)
+        \\js $-0xe                                   ; 78 f0 (ip_off)
+        \\jne $-0x10                                 ; 75 ee (ip_off)
+        \\jnl $-0x12                                 ; 7d ec (ip_off)
+        \\jnle $-0x14                                ; 7f ea (ip_off)
+        \\jnb $-0x16                                 ; 73 e8 (ip_off)
+        \\jnbe $-0x18                                ; 77 e6 (ip_off)
+        \\jnp $-0x1a                                 ; 7b e4 (ip_off)
+        \\jno $-0x1c                                 ; 71 e2 (ip_off)
+        \\jns $-0x1e                                 ; 79 e0 (ip_off)
+        \\loop $-0x20                                ; e2 de (ip_off)
+        \\loope $-0x22                               ; e1 dc (ip_off)
+        \\loopne $-0x24                              ; e0 da (ip_off)
+        \\jcxz $-0x26                                ; e3 d8 (ip_off)
         \\int 0xd                                    ; cd 0d (imm)
         \\int 0x3                                    ; cc (imm)
         \\into                                       ; ce (none)
@@ -568,8 +572,8 @@ test "0042: completionist decode (disasm)" {
         \\call 0x7b:0x1c8                            ; 9a c8 01 7b 00 (interseg_addr)
         \\jmp 0x315:0x22                             ; ea 22 00 15 03 (interseg_addr)
         \\mov [bx+si+0x3b], es                       ; 8c 40 3b (mod)
-        \\jmp $+0x6d9                                ; e9 d9 06 (ip_off)
-        \\call $+0x2ab6                              ; e8 b6 2a (ip_off)
+        \\jmp $+0x6dc                                ; e9 d9 06 (ip_off)
+        \\call $+0x2ab9                              ; e8 b6 2a (ip_off)
         \\retf 0x4494                                ; ca 94 44 (imm)
         \\ret 0x4498                                 ; c2 98 44 (imm)
         \\retf                                       ; cb (none)
@@ -603,33 +607,33 @@ test "0052: memory add loop (simulation)" {
         \\; $0x6: mov si, 0x0                        si: 0x0 -> 0x0
         \\; $0x9: mov [bp+si], si                    WORD PTR [0x3e8]: 0x0 -> 0x0
         \\; $0xb: add si, 0x2                        si: 0x0 -> 0x2
-        \\; $0xe: cmp si, dx                         _, f: _ -> CPAS
-        \\; $0x10: jne $-0x9                         ip: 0x10 -> 0x9
+        \\; $0xe: cmp si, dx                         f: _ -> CPAS
+        \\; $0x10: jne $-0x7                         ip: 0x10 -> 0x9
         \\; $0x9: mov [bp+si], si                    WORD PTR [0x3ea]: 0x0 -> 0x2
         \\; $0xb: add si, 0x2                        si: 0x2 -> 0x4, f: CPAS -> _
-        \\; $0xe: cmp si, dx                         _, f: _ -> CAS
-        \\; $0x10: jne $-0x9                         ip: 0x10 -> 0x9
+        \\; $0xe: cmp si, dx                         f: _ -> CAS
+        \\; $0x10: jne $-0x7                         ip: 0x10 -> 0x9
         \\; $0x9: mov [bp+si], si                    WORD PTR [0x3ec]: 0x0 -> 0x4
         \\; $0xb: add si, 0x2                        si: 0x4 -> 0x6, f: CAS -> P
-        \\; $0xe: cmp si, dx                         _, f: P -> PZ
-        \\; $0x10: jne $-0x9                         _
+        \\; $0xe: cmp si, dx                         f: P -> PZ
+        \\; $0x10: jne $-0x7
         \\; $0x12: mov bx, 0x0                       bx: 0x0 -> 0x0
         \\; $0x15: mov si, 0x0                       si: 0x6 -> 0x0
         \\; $0x18: mov cx, [bp+si]                   cx: 0x0 -> 0x0
         \\; $0x1a: add bx, cx                        bx: 0x0 -> 0x0
         \\; $0x1c: add si, 0x2                       si: 0x0 -> 0x2, f: PZ -> _
-        \\; $0x1f: cmp si, dx                        _, f: _ -> CPAS
-        \\; $0x21: jne $-0xb                         ip: 0x21 -> 0x18
+        \\; $0x1f: cmp si, dx                        f: _ -> CPAS
+        \\; $0x21: jne $-0x9                         ip: 0x21 -> 0x18
         \\; $0x18: mov cx, [bp+si]                   cx: 0x0 -> 0x2
         \\; $0x1a: add bx, cx                        bx: 0x0 -> 0x2, f: CPAS -> _
         \\; $0x1c: add si, 0x2                       si: 0x2 -> 0x4
-        \\; $0x1f: cmp si, dx                        _, f: _ -> CAS
-        \\; $0x21: jne $-0xb                         ip: 0x21 -> 0x18
+        \\; $0x1f: cmp si, dx                        f: _ -> CAS
+        \\; $0x21: jne $-0x9                         ip: 0x21 -> 0x18
         \\; $0x18: mov cx, [bp+si]                   cx: 0x2 -> 0x4
         \\; $0x1a: add bx, cx                        bx: 0x2 -> 0x6, f: CAS -> P
         \\; $0x1c: add si, 0x2                       si: 0x4 -> 0x6
-        \\; $0x1f: cmp si, dx                        _, f: P -> PZ
-        \\; $0x21: jne $-0xb                         _
+        \\; $0x1f: cmp si, dx                        f: P -> PZ
+        \\; $0x21: jne $-0x9
         \\;
         \\; Final (non-zero) registers:
         \\; bx: 0x0006

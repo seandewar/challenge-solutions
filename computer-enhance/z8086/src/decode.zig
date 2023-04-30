@@ -200,7 +200,7 @@ pub const Instr = struct {
         mod_special: ModSpecialInstr,
         data: DataInstr,
         addr: AddrInstr,
-        ip_off: i16,
+        ip_off: struct { off: i16, instr_size: u16 },
         interseg_addr: struct { cs: u16, addr: u16 },
         regs: struct { dst: Register, src: Register },
         reg: Register,
@@ -208,7 +208,10 @@ pub const Instr = struct {
     };
 };
 
-pub fn nextInstr(reader: anytype) !?Instr {
+pub fn nextInstr(raw_reader: anytype) !?Instr {
+    var counting_reader = std.io.countingReader(raw_reader);
+    const reader = counting_reader.reader();
+
     var exclusive_prefix: Instr.ExclusivePrefix = .none;
     var seg_override_prefix: Instr.SegOverridePrefix = .none;
     const first = while (true) {
@@ -439,8 +442,14 @@ pub fn nextInstr(reader: anytype) !?Instr {
         0x1e...0x1f => .{ .reg = .ds },
         0x40...0x5f => .{ .reg = Register.getGeneralPurpose(@intCast(u3, first & 7), true) },
 
-        0x70...0x7f, 0xe0...0xe3, 0xeb => .{ .ip_off = try reader.readByteSigned() },
-        0xe8...0xe9 => .{ .ip_off = try reader.readIntLittle(i16) },
+        0x70...0x7f, 0xe0...0xe3, 0xeb => .{ .ip_off = .{
+            .off = try reader.readByteSigned(),
+            .instr_size = @intCast(u16, counting_reader.bytes_read),
+        } },
+        0xe8...0xe9 => .{ .ip_off = .{
+            .off = try reader.readIntLittle(i16),
+            .instr_size = @intCast(u16, counting_reader.bytes_read),
+        } },
 
         0x91...0x97 => .{ .regs = .{
             .dst = .ax,
@@ -872,10 +881,10 @@ test "0041: add sub cmp jnz" {
         try testExpectDataInstr(op, .al, 9, try nextInstr(reader));
     }
 
-    try testing.expectEqual(Instr{ .op = .jne, .payload = .{ .ip_off = 2 } }, (try nextInstr(reader)).?);
-    try testing.expectEqual(Instr{ .op = .jne, .payload = .{ .ip_off = -4 } }, (try nextInstr(reader)).?);
-    try testing.expectEqual(Instr{ .op = .jne, .payload = .{ .ip_off = -6 } }, (try nextInstr(reader)).?);
-    try testing.expectEqual(Instr{ .op = .jne, .payload = .{ .ip_off = -4 } }, (try nextInstr(reader)).?);
+    try testExpectIpOffInstr(.jne, 2, 2, try nextInstr(reader));
+    try testExpectIpOffInstr(.jne, -4, 2, try nextInstr(reader));
+    try testExpectIpOffInstr(.jne, -6, 2, try nextInstr(reader));
+    try testExpectIpOffInstr(.jne, -4, 2, try nextInstr(reader));
 
     inline for (.{
         .je,
@@ -899,10 +908,7 @@ test "0041: add sub cmp jnz" {
         .loopne,
         .jcxz,
     }, 1..) |op, off| {
-        try testing.expectEqual(
-            Instr{ .op = op, .payload = .{ .ip_off = -2 * @intCast(i16, off) } },
-            (try nextInstr(reader)).?,
-        );
+        try testExpectIpOffInstr(op, -2 * @intCast(i16, off), 2, try nextInstr(reader));
     }
 
     try testing.expectEqual(@as(?Instr, null), try nextInstr(reader));
@@ -1304,10 +1310,7 @@ test "0042: completionist decode" {
         .loopne,
         .jcxz,
     }, 1..) |op, off| {
-        try testing.expectEqual(
-            Instr{ .op = op, .payload = .{ .ip_off = -2 * @intCast(i16, off) } },
-            (try nextInstr(reader)).?,
-        );
+        try testExpectIpOffInstr(op, -2 * @intCast(i16, off), 2, try nextInstr(reader));
     }
 
     try testing.expectEqual(Instr{ .op = .int, .payload = .{ .imm = 13 } }, (try nextInstr(reader)).?);
@@ -1449,8 +1452,8 @@ test "0042: completionist decode" {
 
     try testExpectModInstr(.mov, .{ .addr = .{ .regs = .@"bx+si", .off = 59 } }, .{ .reg = .es }, try nextInstr(reader));
 
-    try testing.expectEqual(Instr{ .op = .jmp, .payload = .{ .ip_off = 1753 } }, (try nextInstr(reader)).?);
-    try testing.expectEqual(Instr{ .op = .call, .payload = .{ .ip_off = 10934 } }, (try nextInstr(reader)).?);
+    try testExpectIpOffInstr(.jmp, 1753, 3, try nextInstr(reader));
+    try testExpectIpOffInstr(.call, 10934, 3, try nextInstr(reader));
 
     try testing.expectEqual(Instr{ .op = .retf, .payload = .{ .imm = 17556 } }, (try nextInstr(reader)).?);
     try testing.expectEqual(Instr{ .op = .ret, .payload = .{ .imm = 17560 } }, (try nextInstr(reader)).?);
@@ -1516,19 +1519,30 @@ fn testExpectPrefixedModSpecialInstr(
     seg_override_prefix: Instr.SegOverridePrefix,
     instr: ?Instr,
 ) !void {
-    try testing.expectEqual(op, instr.?.op);
-    try testing.expectEqualDeep(ModSpecialInstr{ .dst = dst, .src = src, .w = w }, instr.?.payload.mod_special);
-    try testing.expectEqual(exclusive_prefix, instr.?.exclusive_prefix);
-    try testing.expectEqual(seg_override_prefix, instr.?.seg_override_prefix);
+    try testing.expectEqual(Instr{
+        .op = op,
+        .payload = .{ .mod_special = .{ .dst = dst, .src = src, .w = w } },
+        .exclusive_prefix = exclusive_prefix,
+        .seg_override_prefix = seg_override_prefix,
+    }, instr.?);
 }
 
 fn testExpectDataInstr(op: Op, dst_reg: Register, imm: u16, instr: ?Instr) !void {
-    try testing.expectEqual(op, instr.?.op);
-    try testing.expectEqualDeep(DataInstr{ .dst_reg = dst_reg, .imm = imm }, instr.?.payload.data);
+    try testing.expectEqual(Instr{
+        .op = op,
+        .payload = .{ .data = .{ .dst_reg = dst_reg, .imm = imm } },
+    }, instr.?);
 }
 
 fn testExpectAddrInstr(op: Op, dst: AddrInstr.Operand, src: AddrInstr.Operand, instr: ?Instr) !void {
     try testing.expectEqual(op, instr.?.op);
     try testing.expectEqualDeep(dst, instr.?.payload.addr.getDst());
     try testing.expectEqualDeep(src, instr.?.payload.addr.getSrc());
+}
+
+fn testExpectIpOffInstr(op: Op, off: i16, instr_size: u16, instr: ?Instr) !void {
+    try testing.expectEqual(Instr{
+        .op = op,
+        .payload = .{ .ip_off = .{ .off = off, .instr_size = instr_size } },
+    }, instr.?);
 }
