@@ -38,17 +38,25 @@ pub fn main() !u8 {
 
         if (file_i > 0) try stdout.writeByte('\n');
         try stdout.print("; {s}\n", .{file_path});
-        doTheWork(file_buffered.reader(), file_path) catch return 1;
+        doTheWork(file_buffered.reader(), file_path, .{}) catch return 1;
     }
     if (file_i == 0) {
         var stdin_buffered = std.io.bufferedReader(std.io.getStdIn().reader());
-        doTheWork(stdin_buffered.reader(), "from standard input") catch return 1;
+        doTheWork(stdin_buffered.reader(), "from standard input", .{}) catch return 1;
     }
 
     return 0;
 }
 
-fn doTheWork(raw_reader: anytype, name: []const u8) !void {
+const Options = struct {
+    max_comment_pad: u64 = 42,
+    disasm: bool = true,
+    sim: bool = true,
+};
+
+fn doTheWork(raw_reader: anytype, name: []const u8, options: Options) !void {
+    std.debug.assert(options.disasm or options.sim);
+
     // A custom stream that is used to read from `reader` while also populating
     // a `Sim.Memory` buffer to be used for simulating the read binary.
     //
@@ -97,39 +105,41 @@ fn doTheWork(raw_reader: anytype, name: []const u8) !void {
     var stream = Stream{ .inner_reader = raw_reader };
     var had_errors = false;
 
-    var it = decode.instrIterator(stream.reader());
-    doDisasm(&it, stdout, .{}) catch |err| {
-        flushStdOutOrLogErr();
-        log.err("Failed to disassemble {s}: {!}", .{ name, err });
-        if (it.getPrevBytes().len > 0) {
-            var buf: [" 0xXX".len * @TypeOf(it).prev_bytes_capacity]u8 = undefined;
-            var buf_stream = std.io.fixedBufferStream(&buf);
-            for (it.getPrevBytes()) |b| buf_stream.writer().print(" 0x{x:0>2}", .{b}) catch unreachable;
-            log.err("(while decoding bytes: {{{s} }})", .{buf_stream.getWritten()});
-        }
-        had_errors = true;
-    };
-
-    var create_sim_result = stream.createSim();
-    if (create_sim_result) |*sim| {
-        doSim(sim, @intCast(u16, stream.sim_mem.?.len), stdout, .{}) catch |err| {
+    if (options.disasm) {
+        var it = decode.instrIterator(stream.reader());
+        doDisasm(&it, stdout, options.max_comment_pad) catch |err| {
             flushStdOutOrLogErr();
-            log.err("Failed to simulate {s}: {!}", .{ name, err });
-            log.err("(at address: $0x{x})", .{sim.ip});
+            log.err("Failed to disassemble {s}: {!}", .{ name, err });
+            if (it.getPrevBytes().len > 0) {
+                var buf: [" 0xXX".len * @TypeOf(it).prev_bytes_capacity]u8 = undefined;
+                var buf_stream = std.io.fixedBufferStream(&buf);
+                for (it.getPrevBytes()) |b| buf_stream.writer().print(" 0x{x:0>2}", .{b}) catch unreachable;
+                log.err("(while decoding bytes: {{{s} }})", .{buf_stream.getWritten()});
+            }
             had_errors = true;
         };
-    } else |err| {
-        flushStdOutOrLogErr();
-        log.err("Failed to simulate {s}: {!}", .{ name, err });
-        had_errors = true;
+    }
+
+    if (options.sim) {
+        var create_sim_result = stream.createSim();
+        if (create_sim_result) |*sim| {
+            doSim(sim, @intCast(u16, stream.sim_mem.?.len), stdout, options.max_comment_pad) catch |err| {
+                flushStdOutOrLogErr();
+                log.err("Failed to simulate {s}: {!}", .{ name, err });
+                log.err("(at address: $0x{x})", .{sim.ip});
+                had_errors = true;
+            };
+        } else |err| {
+            flushStdOutOrLogErr();
+            log.err("Failed to simulate {s}: {!}", .{ name, err });
+            had_errors = true;
+        }
     }
 
     if (had_errors) return error.WorkHadErrors;
 }
 
-const Options = struct { max_comment_pad: u64 = 42 };
-
-fn doDisasm(instr_it: anytype, raw_writer: anytype, options: Options) !void {
+fn doDisasm(instr_it: anytype, raw_writer: anytype, max_comment_pad: u64) !void {
     try raw_writer.writeAll("bits 16\n");
     var counting_writer = std.io.countingWriter(raw_writer);
     const writer = counting_writer.writer();
@@ -138,7 +148,7 @@ fn doDisasm(instr_it: anytype, raw_writer: anytype, options: Options) !void {
         counting_writer.bytes_written = 0;
         try disasm.writeInstr(instr, writer);
 
-        const pad = @max(options.max_comment_pad, counting_writer.bytes_written);
+        const pad = @max(max_comment_pad, counting_writer.bytes_written);
         for (counting_writer.bytes_written..pad) |_| try writer.writeByte(' ');
         try writer.writeAll(" ;");
         for (instr_it.getPrevBytes()) |b| try writer.print(" {x:0>2}", .{b});
@@ -147,7 +157,7 @@ fn doDisasm(instr_it: anytype, raw_writer: anytype, options: Options) !void {
     }
 }
 
-fn doSim(sim: *Sim, end_ip: u16, raw_writer: anytype, options: Options) !void {
+fn doSim(sim: *Sim, end_ip: u16, raw_writer: anytype, max_comment_pad: u64) !void {
     try raw_writer.writeAll("\n; Simulation:\n");
     var counting_writer = std.io.countingWriter(raw_writer);
     const writer = counting_writer.writer();
@@ -162,7 +172,7 @@ fn doSim(sim: *Sim, end_ip: u16, raw_writer: anytype, options: Options) !void {
         try writer.print("; $0x{x}: ", .{instr_ip});
         try disasm.writeInstr(instr, writer);
 
-        const pad = @max(options.max_comment_pad, counting_writer.bytes_written);
+        const pad = @max(max_comment_pad, counting_writer.bytes_written);
         for (counting_writer.bytes_written..pad) |_| try writer.writeByte(' ');
         switch (info.change) {
             .reg => |reg| try writer.print(
@@ -216,14 +226,14 @@ inline fn printFlags(writer: anytype, flags: Sim.Flags) !void {
 // https://github.com/cmuratori/computer_enhance/blob/main/perfaware/part1
 const testOpenListing = @import("test.zig").testOpenListing;
 
-test "0042: completionist decode" {
+test "0042: completionist decode (disasm)" {
     var file = try testOpenListing("0042_completionist_decode");
     defer file.close();
     var it = decode.instrIterator(file.reader());
 
     var output = std.ArrayList(u8).init(testing.allocator);
     defer output.deinit();
-    try doDisasm(&it, output.writer(), .{ .max_comment_pad = 42 });
+    try doDisasm(&it, output.writer(), 42);
     try testing.expectEqualStrings(
         \\bits 16
         \\mov si, bx                                 ; 89 de (mod)
@@ -569,6 +579,66 @@ test "0042: completionist decode" {
         \\jmp [di]                                   ; ff 25 (mod_special)
         \\jmpf [di]                                  ; ff 2d (mod_special)
         \\jmp 0x5566:0x7788                          ; ea 88 77 66 55 (interseg_addr)
+        \\
+    , output.items);
+}
+
+test "0052: memory add loop (simulation)" {
+    var file = try testOpenListing("0052_memory_add_loop");
+    defer file.close();
+
+    var mem: Sim.Memory = undefined;
+    const end_ip = try file.readAll(&mem);
+    @memset(mem[end_ip..], 0);
+    var sim = Sim{ .mem = &mem };
+
+    var output = std.ArrayList(u8).init(testing.allocator);
+    defer output.deinit();
+    try doSim(&sim, @intCast(u16, end_ip), output.writer(), 42);
+    try testing.expectEqualStrings(
+        \\
+        \\; Simulation:
+        \\; $0x0: mov dx, 0x6                        dx: 0x0 -> 0x6
+        \\; $0x3: mov bp, 0x3e8                      bp: 0x0 -> 0x3e8
+        \\; $0x6: mov si, 0x0                        si: 0x0 -> 0x0
+        \\; $0x9: mov [bp+si], si                    WORD PTR [0x3e8]: 0x0 -> 0x0
+        \\; $0xb: add si, 0x2                        si: 0x0 -> 0x2
+        \\; $0xe: cmp si, dx                         _, f: _ -> CPAS
+        \\; $0x10: jne $-0x9                         ip: 0x10 -> 0x9
+        \\; $0x9: mov [bp+si], si                    WORD PTR [0x3ea]: 0x0 -> 0x2
+        \\; $0xb: add si, 0x2                        si: 0x2 -> 0x4, f: CPAS -> _
+        \\; $0xe: cmp si, dx                         _, f: _ -> CAS
+        \\; $0x10: jne $-0x9                         ip: 0x10 -> 0x9
+        \\; $0x9: mov [bp+si], si                    WORD PTR [0x3ec]: 0x0 -> 0x4
+        \\; $0xb: add si, 0x2                        si: 0x4 -> 0x6, f: CAS -> P
+        \\; $0xe: cmp si, dx                         _, f: P -> PZ
+        \\; $0x10: jne $-0x9                         _
+        \\; $0x12: mov bx, 0x0                       bx: 0x0 -> 0x0
+        \\; $0x15: mov si, 0x0                       si: 0x6 -> 0x0
+        \\; $0x18: mov cx, [bp+si]                   cx: 0x0 -> 0x0
+        \\; $0x1a: add bx, cx                        bx: 0x0 -> 0x0
+        \\; $0x1c: add si, 0x2                       si: 0x0 -> 0x2, f: PZ -> _
+        \\; $0x1f: cmp si, dx                        _, f: _ -> CPAS
+        \\; $0x21: jne $-0xb                         ip: 0x21 -> 0x18
+        \\; $0x18: mov cx, [bp+si]                   cx: 0x0 -> 0x2
+        \\; $0x1a: add bx, cx                        bx: 0x0 -> 0x2, f: CPAS -> _
+        \\; $0x1c: add si, 0x2                       si: 0x2 -> 0x4
+        \\; $0x1f: cmp si, dx                        _, f: _ -> CAS
+        \\; $0x21: jne $-0xb                         ip: 0x21 -> 0x18
+        \\; $0x18: mov cx, [bp+si]                   cx: 0x2 -> 0x4
+        \\; $0x1a: add bx, cx                        bx: 0x2 -> 0x6, f: CAS -> P
+        \\; $0x1c: add si, 0x2                       si: 0x4 -> 0x6
+        \\; $0x1f: cmp si, dx                        _, f: P -> PZ
+        \\; $0x21: jne $-0xb                         _
+        \\;
+        \\; Final (non-zero) registers:
+        \\; bx: 0x0006
+        \\; cx: 0x0004
+        \\; dx: 0x0006
+        \\; bp: 0x03e8
+        \\; si: 0x0006
+        \\; ip: 0x0023
+        \\; flags: PZ
         \\
     , output.items);
 }

@@ -446,9 +446,9 @@ fn testRunSimListing(name: []const u8) !Sim {
         var file = try testOpenListing(name);
         defer file.close();
 
-        const end_i = try file.readAll(&mem);
-        @memset(mem[end_i..], 0);
-        break :blk end_i;
+        const end_ip = try file.readAll(&mem);
+        @memset(mem[end_ip..], 0);
+        break :blk end_ip;
     };
 
     var sim = Sim{ .mem = &mem };
