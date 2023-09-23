@@ -29,6 +29,7 @@ int main(const int argc, const char *const *const argv)
             return EXIT_FAILURE;
         }
         continue;
+
     fail:
         if (close(fd) == -1)
             perror("close");
