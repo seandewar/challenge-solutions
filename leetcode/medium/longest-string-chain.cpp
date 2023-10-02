@@ -1,48 +1,49 @@
 // https://leetcode.com/problems/longest-string-chain
 //
-// DFS + DP. This has room for optimization, but I don't have much time. :(
-// Complexity: too busy. :(
+// DFS + DP. Faster than 99.23%.
+// Can maybe reach 100% by inlining some of the recursion logic.
+//
+// Complexity: time: O(n*m), space: O(n*m).
 
 class Solution {
-    int dfs(const unordered_multimap<string_view, string_view>& graph,
-            const unordered_map<string_view, int>& mem, string_view w) const
-    {
-        if (mem[w] != 0)
-            return mem[w];
+  int dfs(vector<string> &words, vector<vector<size_t>> &graph,
+          vector<int> &mem, size_t i) {
+    if (mem[i] != 0)
+      return mem[i];
 
-        auto [it, end] = graph.equal_range(w);
-        if (it == end)
-            return mem[w] = 1;
+    int maxChain = 1;
+    for (auto j : graph[i])
+      maxChain = max(maxChain, 1 + dfs(words, graph, mem, j));
 
-        int maxChain = 0;
-        for (; it != end; ++it)
-            maxChain = max(maxChain, 1 + dfs(graph, mem, it->second));
-
-        return mem[w] = maxChain;
-    }
+    return mem[i] = maxChain;
+  }
 
 public:
-    int longestStrChain(const vector<string>& words) const
-    {
-        unordered_multimap<string_view, string_view> graph;
-        for (auto& w : words) {
-            for (auto& w2 : words) {
-                if (size(w) <= size(w2))
-                    continue;
+  int longestStrChain(vector<string> &words) {
+    array<vector<size_t>, 17> byLen;
+    for (size_t i = 0; i < size(words); ++i)
+      byLen[size(words[i]) - 1].push_back(i);
 
-                auto [it, it2] = mismatch(begin(w), end(w), begin(w2), end(w2));
-                auto [fit, fit2] = mismatch(it + 1, end(w), it2, end(w2));
-                if (fit == end(w) && fit2 == end(w2))
-                    graph.emplace(w2, w);
-            }
-        }
+    vector<vector<size_t>> graph(size(words));
+    vector<int> mem(size(words));
 
-        unordered_map<string_view, int> mem;
-        mem.reserve(size(words));
-        int maxChain = 0;
-        for (auto& w : words)
-            maxChain = max(maxChain, dfs(graph, mem, w));
+    for (size_t i = 0; i < size(words); ++i) {
+      auto &w = words[i];
 
-        return maxChain;
+      for (auto j : byLen[size(w)]) {
+        auto &w2 = words[j];
+
+        auto [it, it2] = mismatch(begin(w), end(w), begin(w2), end(w2));
+        auto [fit, fit2] = mismatch(it, end(w), it2 + 1, end(w2));
+        if (fit == end(w) && fit2 == end(w2))
+          graph[i].push_back(j);
+      }
     }
+
+    int maxChain = 0;
+    for (size_t i = 0; i < size(words); ++i)
+      maxChain = max(maxChain, dfs(words, graph, mem, i));
+
+    return maxChain;
+  }
 };
