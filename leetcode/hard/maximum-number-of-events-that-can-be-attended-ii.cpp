@@ -16,11 +16,12 @@ class Solution {
     int dfs(const auto &events, auto &memo, int k, int i)
     {
         const auto &event = events[i];
+        auto &mem = memo[(k - 1) * events.size() + i];
         if (k == 1) {
             return event[2];
         }
-        if (memo[k][i] != -1) {
-            return memo[k][i];
+        if (mem != 0) {
+            return mem;
         }
 
         int best_sum = 0;
@@ -31,7 +32,7 @@ class Solution {
             best_sum =
                 max(best_sum, dfs(events, memo, k - 1, it - events.begin()));
         }
-        return memo[k][i] = event[2] + best_sum;
+        return mem = event[2] + best_sum;
     }
 
 public:
@@ -40,7 +41,7 @@ public:
         sort(events.begin(), events.end(),
              [](const auto &a, const auto &b) { return a[0] < b[0]; });
 
-        vector memo(k + 1, vector(events.size(), -1));
+        vector<int> memo(k * events.size());
         int result = 0;
         for (int i = 0; i < events.size(); ++i) {
             result = max(result, dfs(events, memo, k, i));
