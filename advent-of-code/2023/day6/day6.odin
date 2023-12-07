@@ -1,6 +1,7 @@
 package main
 
 import "core:fmt"
+import "core:math"
 import "core:os"
 import "core:strconv"
 import "core:strings"
@@ -10,17 +11,25 @@ Race :: struct {time, dist: uint}
 main :: proc() {
     p1_races, p2_race, ok := parse_file("input")
     assert(ok)
+    defer delete(p1_races)
 
-    compute_wins :: proc(race: Race) -> (wins: int) {
-        for speed in 1..<race.time {
-            if time_left := race.time - speed; time_left * speed > race.dist {
-                wins += 1
-            }
+    compute_wins :: proc(race: Race) -> uint {
+        // (t - x) * x > d  =>  -x^2 + tx - d > 0  [a = -1, b = t, c = -d - 1]
+        b, c := int(race.time), -int(race.dist)
+        d := b * b + 4 * c
+        if d <= 0 { // No roots (can't win) or one root (draw at best)
+            return 0
         }
-        return
+
+        d_sqrt := math.sqrt(f64(d))
+        r0, r1 := (f64(b) - d_sqrt) / 2, (f64(b) + d_sqrt) / 2
+        // Want the length of the interval where quadratic > 0, but only for integer values of x;
+        // ceil(r0) or floor(r1) if they are fractional, but otherwise r0+1 or r1-1 if they are
+        // integral, which is what the floor(r0+1) and ceil(r1-1) logic achieves below
+        return uint(math.ceil(r1 - 1) - math.floor(r0 + 1)) + 1
     }
 
-    p1 := len(p1_races) > 0 ? 1 : 0
+    p1: uint = len(p1_races) > 0 ? 1 : 0
     for race in p1_races {
         p1 *= compute_wins(race)
     }
