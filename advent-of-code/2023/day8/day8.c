@@ -93,11 +93,11 @@ int main(void) {
 
         size_t a = p2, b = move;
         while (a != b) {
-            assert(a >= p2 && b >= move);
             if (a > b)
                 b += move;
             else
                 a += p2;
+            assert(a >= p2 && b >= move);
         }
         p2 = a;
     }
