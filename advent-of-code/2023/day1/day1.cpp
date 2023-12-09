@@ -8,8 +8,9 @@
 int main()
 {
     std::ifstream file{"input"};
-    int p1 = 0, p2 = 0;
+    assert(file.is_open());
 
+    int p1 = 0, p2 = 0;
     for (std::string line; std::getline(file, line);) {
         constexpr auto is_digit = [](const char c) { return c >= '0' && c <= '9'; };
         const auto l_digit_it = std::ranges::find_if(line, is_digit);
