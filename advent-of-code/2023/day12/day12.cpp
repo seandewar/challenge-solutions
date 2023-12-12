@@ -10,7 +10,7 @@
 #include <vector>
 
 struct MemoKey {
-    size_t springs_len, lens_len;
+    std::uint8_t springs_len, lens_len;
     unsigned len;
     bool spring_prev;
     bool operator==(const MemoKey &) const = default;
@@ -19,9 +19,9 @@ struct MemoKey {
 template<>
 struct std::hash<MemoKey> {
     size_t operator()(const MemoKey &s) const {
-        return s.springs_len ^ s.lens_len ^ s.len
-               ^ (static_cast<std::size_t>(s.spring_prev)
-                  << (8 * sizeof s.len));
+        return static_cast<std::size_t>(s.len) << 17 | s.springs_len
+               | static_cast<std::size_t>(s.lens_len) << 8
+               | static_cast<std::size_t>(s.spring_prev) << 16;
     }
 };
 
@@ -34,8 +34,8 @@ static std::uint_least64_t dfs(Memo &memo, const std::string_view springs,
         return lens.empty() || (lens.size() == 1 && lens[0] == 0);
 
     const MemoKey memo_key{
-        .springs_len = springs.size(),
-        .lens_len = lens.size(),
+        .springs_len = static_cast<std::uint8_t>(springs.size()),
+        .lens_len = static_cast<std::uint8_t>(lens.size()),
         .len = !lens.empty() ? lens[0] : 0,
         .spring_prev = spring_prev,
     };
