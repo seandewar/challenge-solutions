@@ -98,7 +98,6 @@ int main() {
             std::copy(line.cbegin(), line_end, std::back_inserter(line));
             std::copy(lens.cbegin(), lens_end, std::back_inserter(lens));
         }
-        memo.clear();
         p2 += dfs(memo, line, lens);
     }
     assert(f.eof());
