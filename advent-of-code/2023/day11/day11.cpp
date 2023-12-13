@@ -12,7 +12,7 @@
 
 int main() {
     std::ifstream f{"input"};
-    assert(f);
+    assert(f.is_open());
 
     std::vector<char> grid;
     int w = 0, h = 0;

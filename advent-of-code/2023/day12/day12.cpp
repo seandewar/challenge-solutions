@@ -64,7 +64,7 @@ static std::uint_least64_t dfs(Memo &memo, const std::string_view springs,
 }
 
 int main() {
-    std::fstream f{"input"};
+    std::ifstream f{"input"};
     assert(f.is_open());
 
     std::uint_least64_t p1 = 0, p2 = 0;
