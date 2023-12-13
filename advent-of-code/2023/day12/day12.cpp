@@ -25,7 +25,7 @@ struct std::hash<MemoKey> {
     }
 };
 
-using Memo = std::unordered_map<MemoKey, uint_least64_t>;
+using Memo = std::unordered_map<MemoKey, std::uint_least64_t>;
 
 static std::uint_least64_t dfs(Memo &memo, const std::string_view springs,
                                const std::span<unsigned> lens,
