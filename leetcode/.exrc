@@ -1,7 +1,9 @@
 " Add comment markers and trims trailing whitespace for a list of lines
 function! s:CommentifyLines(lines) abort
     if !empty(&commentstring)
-        call map(a:lines, {_, v -> printf(&commentstring, ' ' . v . ' ')})
+        let cms = &commentstring->substitute('\s\+%s', '%s', '')
+                              \ ->substitute('%s\s\+', '%s', '')
+        call map(a:lines, {_, v -> printf(cms, ' ' . v . ' ')})
     endif
     call map(a:lines, {_, v -> substitute(v, '^\(.\{-}\)\s*$', '\1', '')})
     return a:lines
@@ -48,5 +50,6 @@ endfunction
 augroup challenge_solutions_leetcode
     autocmd!
     autocmd BufNewFile,BufReadPost *
-                \ call timer_start(0, {-> s:MaybeSetupBuffer()})
+                \  silent! LspAutoOff
+                \| call timer_start(0, {-> s:MaybeSetupBuffer()})
 augroup END
