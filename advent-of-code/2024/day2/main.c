@@ -5,12 +5,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-static unsigned find_mismatches(const char *p, const bool asc,
+static unsigned find_mismatches(const char *const line, const bool asc,
                                 const bool skip_first)
 {
     unsigned mismatches = skip_first ? 1 : 0;
 
     long prev_num;
+    const char *p = line;
     char *next;
     for (unsigned i = 0;; p = next, ++i) {
         const long num = strtol(p, &next, 10);
@@ -19,7 +20,7 @@ static unsigned find_mismatches(const char *p, const bool asc,
                 abort(); // overflow
 
             for (; isspace(*p); ++p) {}
-            if (*p != '\0' || *(p - 1) != '\n')
+            if (*p != '\0' || (p != line && *(p - 1) != '\n'))
                 abort(); // invalid number or line too long
             if (i == 0)
                 return UINT_MAX; // empty line; treat as invalid for both parts
