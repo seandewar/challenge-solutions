@@ -1,5 +1,5 @@
 // https://leetcode.com/problems/make-string-a-subsequence-using-cyclic-increments
-// Complexity: runtime O(n+m), space O(1).
+// Complexity: runtime O(min(n,m)), space O(1).
 
 class Solution {
 public:
