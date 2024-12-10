@@ -1,4 +1,5 @@
 // https://leetcode.com/problems/find-longest-special-substring-that-occurs-thrice-i
+// See my solution for part II of this problem for a O(n) runtime alternative.
 // Complexity: runtime O(n^2), space O(1) [O(26) due to constraints].
 
 class Solution {
