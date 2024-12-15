@@ -43,8 +43,27 @@ function! s:MaybeSetupBuffer() abort
     endif
 
     setlocal spell
-    redraw " force a redraw now so the message has a chance to show
-    echo "Use :LCAltHeader to add a header for an alternative solution."
+    redraw  " force a redraw now so the message has a chance to show
+    echo 'Use :LCAltHeader to add a header for an alternative solution.'
+endfunction
+
+function! s:FillCommitMessage()
+    if expand('%:t') != 'COMMIT_EDITMSG' || !getline(1)->empty()
+        return
+    endif
+    let names = matchbufline(bufnr(),
+                           \ '^\s*#\s*new file:\s*leetcode/\(.\+\)\s*$',
+                           \ 1, '$', #{submatches: v:true})
+                        \ ->map({i, v -> v.submatches[0]
+                                   \ ->fnamemodify(':t:r')
+                                   \ ->substitute('-', ' ', 'g')
+                                   \ ->substitute('\<\w', '\u&', 'g')})
+
+    if names->len() == 1
+        call setline(1, [$'Add {names[0]} Solution', ''])
+    elseif names->len() > 1
+        call setline(1, [$'Add {names->len()} Solutions', '']->extend(names))
+    endif
 endfunction
 
 augroup challenge_solutions_leetcode
@@ -52,4 +71,5 @@ augroup challenge_solutions_leetcode
     autocmd BufNewFile,BufReadPost *
                 \  silent! LspAutoOff
                 \| call timer_start(0, {-> s:MaybeSetupBuffer()})
+    autocmd User FugitiveEditor call s:FillCommitMessage()
 augroup END
