@@ -1,5 +1,5 @@
 // https://leetcode.com/problems/maximum-subarray-sum-with-length-divisible-by-k
-// Complexity: runtime O(n), space O(n).
+// Complexity: runtime O(n+k), space O(n+k).
 
 class Solution {
 public:
