@@ -6,9 +6,9 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
-#include <optional>
 #include <unordered_set>
 #include <utility>
+#include <vector>
 
 int main()
 {
@@ -26,12 +26,8 @@ int main()
         return grid[y * dim + x];
     };
 
-    std::string line;
-    const auto parse_next_byte_pos =
-        [&]() -> std::optional<std::pair<unsigned, unsigned>> {
-        if (!std::getline(file, line))
-            return {};
-
+    std::vector<std::pair<unsigned, unsigned>> bytes;
+    for (std::string line; std::getline(file, line);) {
         unsigned x, y;
         const auto [after_x, x_ec] =
             std::from_chars(line.data(), line.data() + line.size(), x);
@@ -43,13 +39,18 @@ int main()
         if (y_ec != std::errc{})
             throw std::runtime_error{"malformed input"};
 
-        return {{x, y}};
+        bytes.emplace_back(x, y);
     };
-    for (unsigned i = 0; i < p1_byte_count; ++i) {
-        const auto pos = parse_next_byte_pos();
-        if (!pos)
-            break;
-        square(pos->first, pos->second) = byte_square;
+    if (!file.eof())
+        throw std::runtime_error{"failed to read input"};
+
+    unsigned next_byte_i = 0;
+    for (; next_byte_i < p1_byte_count; ++next_byte_i) {
+        if (std::exchange(
+                square(bytes[next_byte_i].first, bytes[next_byte_i].second),
+                byte_square)
+            == byte_square)
+            throw std::runtime_error{"duplicate byte positions unsupported"};
     }
 
     const auto pos_hash = [](const std::pair<unsigned, unsigned> &p) {
@@ -58,7 +59,7 @@ int main()
                | p.second;
     };
     std::unordered_set<std::pair<unsigned, unsigned>, decltype(pos_hash)>
-        best_path;
+        goal_path_set;
 
     struct Walk {
         std::pair<int, int> pos;
@@ -67,7 +68,8 @@ int main()
     };
     std::deque<Walk> q;
 
-    const auto find_path = [&]() {
+    const auto find_best_path = [&] {
+        goal_path_set.clear();
         std::transform(grid.begin(), grid.end(), grid.begin(),
                        [&](const auto s) {
                            return s != byte_square ? unvisited_square : s;
@@ -85,8 +87,8 @@ int main()
 
                 path.emplace(x, y);
                 if (x == dim - 1 && y == dim - 1) {
-                    best_path = std::move(path);
-                    return true;
+                    goal_path_set = std::move(path);
+                    return;
                 }
 
                 for (const auto [dx, dy] :
@@ -102,28 +104,43 @@ int main()
                 }
             }
         }
-
-        return false;
     };
 
-    if (!find_path())
+    find_best_path();
+    if (goal_path_set.empty())
         throw std::runtime_error{"end unreachable"};
-    std::cout << "Day18: P1: " << best_path.size() - 1 << std::flush;
+    std::cout << "Day18: P1: " << goal_path_set.size() - 1 << std::flush;
 
-    for (std::optional<std::pair<unsigned, unsigned>> pos;
-         (pos = parse_next_byte_pos());) {
-        const auto [x, y] = *pos;
-        square(x, y) = byte_square;
-        if (!best_path.contains({x, y}))
-            continue;
+    const auto p2_it =
+        std::partition_point(bytes.begin(), bytes.end(), [&](const auto &pos) {
+            const unsigned i = &pos - bytes.data();
+            bool path_stale = false;
+            if (i <= next_byte_i) {
+                while (next_byte_i > i + 1) {
+                    --next_byte_i;
+                    square(bytes[next_byte_i].first,
+                           bytes[next_byte_i].second) = unvisited_square;
+                }
+                path_stale = goal_path_set.empty();
+            } else {
+                for (; next_byte_i <= i; ++next_byte_i) {
+                    path_stale = path_stale
+                                 || goal_path_set.contains(bytes[next_byte_i]);
+                    if (std::exchange(square(bytes[next_byte_i].first,
+                                             bytes[next_byte_i].second),
+                                      byte_square)
+                        == byte_square)
+                        throw std::runtime_error{
+                            "duplicate byte positions unsupported"};
+                }
+            }
 
-        if (!find_path()) {
-            std::cout << ", P2: " << x << ',' << y << std::endl;
-            return EXIT_SUCCESS;
-        }
-    }
-    if (!file.eof())
-        throw std::runtime_error{"failed to read input"};
+            if (path_stale)
+                find_best_path();
+            return !goal_path_set.empty();
+        });
+    if (p2_it == bytes.end())
+        throw std::runtime_error{"P2 unsolvable; end always reachable"};
 
-    throw std::runtime_error{"P2 unsolvable; end always reachable"};
+    std::cout << ", P2: " << p2_it->first << ',' << p2_it->second << std::endl;
 }
