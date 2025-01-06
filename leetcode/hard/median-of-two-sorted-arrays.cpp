@@ -1,7 +1,6 @@
 // https://leetcode.com/problems/median-of-two-sorted-arrays
 //
-// Complexity: runtime O(logk*(logm+logn)), space O(1) [where k = range of
-// possible numbers]
+// Complexity: runtime O(logk*(logm+logn)), space O(1) [where k = range of nums]
 
 class Solution {
 public:
@@ -11,7 +10,16 @@ public:
         const int mi = midpoint(min<int>(nums1.size(), nums2.size()) - 1,
                                 max<int>(nums1.size(), nums2.size()));
 
-        for (int lx = -1e6, rx = 1e6;;) {
+        const auto num = [](const auto it, const auto &nums) -> int {
+            return it != nums.end() ? *it : numeric_limits<int>::max();
+        };
+        const auto rnum = [](const auto rit, const auto &nums) -> int {
+            return rit != nums.rend() ? *rit : numeric_limits<int>::min();
+        };
+
+        int lx = min(num(nums1.begin(), nums1), num(nums2.begin(), nums2)),
+            rx = max(rnum(nums1.rbegin(), nums1), rnum(nums2.rbegin(), nums2));
+        while (lx <= rx) {
             const int mx = midpoint(lx, rx);
 
             const auto [lit1, rit1] =
@@ -21,10 +29,6 @@ public:
 
             const int li = (lit1 - nums1.begin()) + (lit2 - nums2.begin());
             const int ri = (rit1 - nums1.begin()) + (rit2 - nums2.begin());
-
-            const auto num = [](const auto it, const auto &nums) -> int {
-                return it != nums.end() ? *it : numeric_limits<int>::max();
-            };
 
             if (li <= mi && ri > mi) {
                 const bool odd_size = (nums1.size() + nums2.size()) % 2 == 1;
@@ -41,5 +45,7 @@ public:
             else
                 lx = rx = min(num(lit1, nums1), num(lit2, nums2));
         }
+
+        abort(); // impossible due to constraints
     }
 };
