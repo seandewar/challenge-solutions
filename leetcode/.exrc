@@ -51,13 +51,15 @@ function! s:FillCommitMessage()
     if expand('%:t') != 'COMMIT_EDITMSG' || !getline(1)->empty()
         return
     endif
+
     let names = matchbufline(bufnr(),
                            \ '^\s*#\s*new file:\s*leetcode/\(.\+\)\s*$',
                            \ 1, '$', #{submatches: v:true})
                         \ ->map({i, v -> v.submatches[0]
-                                   \ ->fnamemodify(':t:r')
-                                   \ ->substitute('-', ' ', 'g')
-                                   \ ->substitute('\<\w', '\u&', 'g')})
+                                 \ ->fnamemodify(':t:r')
+                                 \ ->substitute('-', ' ', 'g')
+                                 \ ->substitute('\<[ivxlcdm]\+\>', '\U&', 'g')
+                                 \ ->substitute('\<\w', '\u&', 'g')})
 
     if names->len() == 1
         call setline(1, [$'Add {names[0]} Solution', ''])
