@@ -9,5 +9,5 @@ edition = "2021"
 tinyvec = { version = "1.6.0", features = ["rustc_1_55"] }
 
 [dependencies.tokio]
-version = "1.24.2"
+version = "1.38.2"
 features = ["io-util", "macros", "net", "rt", "sync"]
